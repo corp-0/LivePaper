@@ -8,6 +8,7 @@ Currently it only supports KWin, but you should be able to contribute an impleme
 - Your wallpaper is just a web page, so you can build it with regular HTML, CSS and JavaScript.
 - You can import web wallpapers from Wallpaper Engine without touching the original Workshop files.
 - Wallpapers can react to clicks, scrolling and the position of your mouse.
+- Audio-reactive web wallpapers can visualize the system's current playback.
 - LivePaper can pause rendering or mute audio when a fullscreen or maximized window covers the wallpaper.
 - Changes to the wallpaper manifest or LivePaper config are picked up automatically.
 - Wallpapers run in their own process, and the daemon starts them again if they crash.
@@ -42,18 +43,14 @@ If you want to try it, you can install the prerequisites and build it yourself.
 
 ## Pre-requisites
 
-For now, you need an x86-64 Linux system running KWin on Wayland. The renderer
-uses WPE WebKit with its FDO backend.
-
-You also need the .NET 10 SDK and a few native build tools. On Arch Linux and
-CachyOS, you can install everything with:
+The only tested environment is my machine, so x86-64 CachyOS and KDE Plasma on Wayland. If you have the same configuration, you can
+install dependencies to build and operate LivePaper with:
 
 ```sh
-sudo pacman -S --needed base-devel clang dotnet-sdk libglvnd wayland wpewebkit wpebackend-fdo
+sudo pacman -S --needed clang dotnet-sdk wpewebkit
 ```
 
-Other distributions might work, but I haven't tested them yet and their package
-names will be different.
+Other configurations will have to figure out what they need. Sorry!
 
 ## User installation
 

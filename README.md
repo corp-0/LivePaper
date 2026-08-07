@@ -3,6 +3,15 @@
 LivePaper is a Wayland-native live wallpaper engine where wallpapers are ordinary web pages.
 Currently it only supports KWin, but you should be able to contribute an implementation for your own compositor.
 
+## Features
+
+- Your wallpaper is just a web page, so you can build it with regular HTML, CSS and JavaScript.
+- You can import web wallpapers from Wallpaper Engine without touching the original Workshop files.
+- Wallpapers can react to clicks, scrolling and the position of your mouse.
+- LivePaper can pause rendering or mute audio when a fullscreen or maximized window covers the wallpaper.
+- Changes to the wallpaper manifest or LivePaper config are picked up automatically.
+- Wallpapers run in their own process, and the daemon starts them again if they crash.
+
 ## Why
 
 The Wallpaper engine plugin on KDE store only semi-works, and it will crash your entire desktop when it doesn't. I wanted instead something
@@ -142,3 +151,7 @@ and stopping it when the daemon exits:
 dotnet run --project src/LivePaper.Daemon
 dotnet run --project src/LivePaper.Daemon -- --wallpaper /path/to/wallpaper
 ```
+
+## License
+
+LivePaper is available under the [MIT License](LICENSE).

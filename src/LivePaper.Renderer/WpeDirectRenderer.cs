@@ -1,6 +1,7 @@
 using LivePaper.Renderer.Native;
 using System.Diagnostics;
 using System.Runtime.InteropServices;
+using System.Text.Json;
 using LivePaper.Protocol;
 
 namespace LivePaper.Renderer;
@@ -105,6 +106,28 @@ public sealed unsafe class WpeDirectRenderer : IDisposable
             nint.Zero,
             nint.Zero,
             nint.Zero);
+
+    public void DispatchAudioSpectrum(AudioSpectrumChanged spectrum)
+    {
+        if (spectrum.Samples.Length != AudioSpectrumChanged.SampleCount)
+        {
+            throw new InvalidDataException(
+                $"Audio spectrum frames must contain {AudioSpectrumChanged.SampleCount} samples.");
+        }
+
+        var samples = JsonSerializer.Serialize(
+            spectrum.Samples,
+            LivePaperProtocolJsonContext.Default.SingleArray);
+        Wpe.EvaluateJavaScript(
+            WebView,
+            $"window.livepaper?._setAudioSpectrum({samples});",
+            -1,
+            nint.Zero,
+            nint.Zero,
+            nint.Zero,
+            nint.Zero,
+            nint.Zero);
+    }
 
     private void DispatchInput(uint type, uint time, int x, int y, uint detail, int value)
     {

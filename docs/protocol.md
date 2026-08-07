@@ -23,11 +23,18 @@ open. Version 1 defines:
   element under the cursor and bubbles normally, so listeners on a canvas,
   document, or window all receive it. Synthetic motion never includes buttons,
   clicks, or scrolling.
+- `audio_reaction`: exposes 128-sample stereo spectrum frames. The first 64
+  values are the left channel and the last 64 are the right channel, ordered
+  from low to high frequency. Values are normalized to the `0.0` to `1.0`
+  range. Each frame updates `livepaper.audioSpectrum`, dispatches an
+  `audiospectrumchange` event, and calls the listener registered through the
+  Wallpaper Engine-compatible `wallpaperRegisterAudioListener(callback)` API.
 
-`global_pointer_tracking` currently requires the KWin backend. KWin owns the global cursor
-position, so tracking continues while another surface is under the cursor;
-standard Wayland clients cannot obtain that information from an empty input
-region.
+The built-in `global_pointer_tracking` implementation uses the KWin backend.
+KWin owns the global cursor position, so tracking continues while another
+surface is under the cursor; standard Wayland clients cannot obtain that
+information from an empty input region. Other compositor backends can provide
+the same protocol capability from their own privileged integration.
 
 Imported Wallpaper Engine wallpapers can ask the renderer to replace CSS
 `translate3d(x, y, 0)` calls with 2D `translate(x, y)` when legacy parallax

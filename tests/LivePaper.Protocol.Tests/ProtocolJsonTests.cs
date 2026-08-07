@@ -31,4 +31,18 @@ public class ProtocolJsonTests
         Assert.Equal(HostMessageKind.PointerPositionChanged, decoded.Kind);
         Assert.Equal(position, decoded.PointerPosition);
     }
+
+    [Fact]
+    public void AudioSpectrumMessageRoundTrips()
+    {
+        var samples = Enumerable.Range(0, AudioSpectrumChanged.SampleCount)
+            .Select(index => index / 127f)
+            .ToArray();
+        var message = HostMessage.ForAudioSpectrum(new AudioSpectrumChanged(samples));
+
+        var decoded = ProtocolJson.DeserializeHostMessage(ProtocolJson.Serialize(message));
+
+        Assert.Equal(HostMessageKind.AudioSpectrumChanged, decoded.Kind);
+        Assert.Equal(samples, decoded.AudioSpectrum?.Samples);
+    }
 }

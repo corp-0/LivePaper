@@ -56,7 +56,7 @@ public static class WallpaperImporter
         try
         {
             CopyDirectory(source, staging);
-            var manifestToml = BuildManifest(root, id, entry);
+            var manifestToml = BuildManifest(root, id, entry, UsesAudioReaction(source));
             _ = WallpaperManifest.Load(manifestToml);
             File.WriteAllText(Path.Combine(staging, "manifest.toml"), manifestToml);
             Directory.Move(staging, destination);
@@ -111,7 +111,7 @@ public static class WallpaperImporter
         }
     }
 
-    private static string BuildManifest(JsonElement project, string id, string entry)
+    private static string BuildManifest(JsonElement project, string id, string entry, bool usesAudioReaction)
     {
         var title = project.TryGetProperty("title", out var titleElement)
             ? titleElement.GetString()
@@ -121,7 +121,8 @@ public static class WallpaperImporter
             .Append("id = ").AppendLine(ToTomlString(id))
             .Append("name = ").AppendLine(ToTomlString(string.IsNullOrWhiteSpace(title) ? id : title))
             .Append("entry = ").AppendLine(ToTomlString(entry.Replace('\\', '/')))
-            .AppendLine("capabilities = []");
+            .Append("capabilities = ").AppendLine(
+                usesAudioReaction ? "[\"audio_reaction\"]" : "[]");
 
         if (project.TryGetProperty("general", out var general) &&
             general.TryGetProperty("properties", out var properties))
@@ -146,6 +147,28 @@ public static class WallpaperImporter
         }
 
         return output.ToString();
+    }
+
+    private static bool UsesAudioReaction(string source)
+    {
+        foreach (var file in Directory.EnumerateFiles(source, "*", SearchOption.AllDirectories))
+        {
+            if (Path.GetExtension(file).ToLowerInvariant() is not (".html" or ".htm" or ".js"))
+            {
+                continue;
+            }
+
+            using var reader = new StreamReader(file);
+            while (reader.ReadLine() is { } line)
+            {
+                if (line.Contains("wallpaperRegisterAudioListener", StringComparison.Ordinal))
+                {
+                    return true;
+                }
+            }
+        }
+
+        return false;
     }
 
     private static string ToTomlValue(JsonElement value) => value.ValueKind switch

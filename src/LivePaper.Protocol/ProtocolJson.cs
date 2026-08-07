@@ -15,4 +15,5 @@ public static class ProtocolJson
 
 [JsonSourceGenerationOptions(JsonSerializerDefaults.Web)]
 [JsonSerializable(typeof(HostMessage))]
+[JsonSerializable(typeof(float[]))]
 public sealed partial class LivePaperProtocolJsonContext : JsonSerializerContext;

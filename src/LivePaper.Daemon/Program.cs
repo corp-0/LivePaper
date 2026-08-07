@@ -35,13 +35,17 @@ try
         var manifest = WallpaperManifest.Load(await File.ReadAllTextAsync(manifestPath, shutdown.Token));
         using var manifestWatcher = new FileChangeWatcher(manifestPath);
         var trackPointerPosition = manifest.HasCapability(WallpaperCapabilities.GlobalPointerTracking);
+        var audioSpectrumSource = manifest.HasCapability(WallpaperCapabilities.AudioReaction)
+            ? new PipeWireAudioSpectrumSource()
+            : null;
         await using var backend = await PlatformBackendFactory.CreateAsync(
             new PlatformBackendOptions(options.VisibilityPollInterval, trackPointerPosition));
         using var run = CancellationTokenSource.CreateLinkedTokenSource(shutdown.Token);
         var supervisor = new RendererSupervisor(
             options,
             backend.Visibility,
-            backend.PointerPosition);
+            backend.PointerPosition,
+            audioSpectrumSource);
         var supervisorTask = supervisor.RunAsync(run.Token);
         var configChangedTask = configWatcher.WaitForChangeAsync(shutdown.Token).AsTask();
         var manifestChangedTask = manifestWatcher.WaitForChangeAsync(shutdown.Token).AsTask();

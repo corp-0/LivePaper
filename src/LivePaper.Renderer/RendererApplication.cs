@@ -82,6 +82,7 @@ public static class RendererApplication
         var ipcTask = ipc?.ListenAsync(
             dispatcher.DispatchVisibility,
             dispatcher.DispatchPointerPosition,
+            dispatcher.DispatchAudioSpectrum,
             ipcShutdown.Token);
         using var signals = new MainLoopSignalRegistration(mainLoop);
         mainLoop.Run();
@@ -329,6 +330,9 @@ public static class RendererApplication
 
         public void DispatchPointerPosition(PointerPositionChanged pointerPosition) =>
             GLib.Invoke(() => renderer.DispatchPointerPosition(pointerPosition));
+
+        public void DispatchAudioSpectrum(AudioSpectrumChanged audioSpectrum) =>
+            GLib.Invoke(() => renderer.DispatchAudioSpectrum(audioSpectrum));
     }
 
     private sealed class MainLoopSignalRegistration : IDisposable

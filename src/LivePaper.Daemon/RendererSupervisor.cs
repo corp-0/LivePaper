@@ -8,7 +8,8 @@ namespace LivePaper.Daemon;
 public sealed class RendererSupervisor(
     DaemonOptions options,
     IVisibilitySource visibilitySource,
-    IPointerPositionSource? pointerPositionSource)
+    IPointerPositionSource? pointerPositionSource,
+    IAudioSpectrumSource? audioSpectrumSource)
 {
     private static readonly TimeSpan StableRunTime = TimeSpan.FromSeconds(30);
     private static readonly TimeSpan RendererShutdownSettleTime = TimeSpan.FromSeconds(1);
@@ -16,101 +17,134 @@ public sealed class RendererSupervisor(
 
     public async Task RunAsync(CancellationToken cancellationToken)
     {
+        using var audioStop = CancellationTokenSource.CreateLinkedTokenSource(cancellationToken);
+        var audioTask = audioSpectrumSource?.RunAsync(audioStop.Token);
         var consecutiveFailures = 0;
-
-        while (!cancellationToken.IsCancellationRequested)
+        try
         {
-            using var ipc = RendererIpcServer.Create();
-            using var renderer = StartRenderer(ipc.SocketPath, out var rendererErrors);
-            var startedAt = Stopwatch.GetTimestamp();
-            Console.WriteLine($"Renderer started (PID {renderer.Id}).");
-
-            try
+            await SuperviseRenderersAsync(cancellationToken);
+        }
+        finally
+        {
+            audioStop.Cancel();
+            if (audioTask is not null)
             {
-                using var handshakeTimeout = CancellationTokenSource.CreateLinkedTokenSource(cancellationToken);
-                handshakeTimeout.CancelAfter(TimeSpan.FromSeconds(5));
-                await ipc.AcceptAsync(handshakeTimeout.Token);
-                await ipc.SendAsync(HostMessage.ForInitialState(
-                    ApplyPolicies(visibilitySource.Current),
-                    pointerPositionSource?.Current));
-                Console.WriteLine($"Renderer connected to protocol {ProtocolVersion.Current}.");
-
-                var updates = Channel.CreateUnbounded<HostMessage>(
-                    new UnboundedChannelOptions { SingleReader = true, SingleWriter = false });
-                void OnVisibilityChanged(object? sender, VisibilityChanged state) =>
-                    updates.Writer.TryWrite(HostMessage.ForVisibility(ApplyPolicies(state)));
-                void OnPointerPositionChanged(object? sender, PointerPositionChanged position) =>
-                    updates.Writer.TryWrite(HostMessage.ForPointerPosition(position));
-                visibilitySource.Changed += OnVisibilityChanged;
-                if (pointerPositionSource is not null)
-                {
-                    pointerPositionSource.Changed += OnPointerPositionChanged;
-                }
                 try
                 {
-                    await ForwardUpdatesUntilExitAsync(renderer, ipc, updates.Reader, cancellationToken);
+                    await audioTask;
                 }
-                finally
+                catch (OperationCanceledException) when (audioStop.IsCancellationRequested)
                 {
-                    visibilitySource.Changed -= OnVisibilityChanged;
-                    if (pointerPositionSource is not null)
-                    {
-                        pointerPositionSource.Changed -= OnPointerPositionChanged;
-                    }
-                    updates.Writer.TryComplete();
                 }
-            }
-            catch (OperationCanceledException) when (!cancellationToken.IsCancellationRequested)
-            {
-                await Console.Error.WriteLineAsync("Renderer did not complete the protocol handshake within 5 seconds.");
-                await StopRendererAsync(renderer);
-            }
-            catch (OperationCanceledException) when (cancellationToken.IsCancellationRequested)
-            {
-                await StopRendererAsync(renderer);
-                break;
-            }
-
-            var runTime = Stopwatch.GetElapsedTime(startedAt);
-            await Console.Error.WriteLineAsync($"Renderer exited with code {renderer.ExitCode} after {runTime:g}.");
-
-            consecutiveFailures = runTime >= StableRunTime ? 0 : consecutiveFailures + 1;
-            if (consecutiveFailures >= FailureLimit)
-            {
-                var message = GetFallbackMessage(rendererErrors, renderer.ExitCode);
-                await Console.Error.WriteLineAsync(
-                    $"Renderer failed {consecutiveFailures} times; showing fallback wallpaper: {message}");
-                using var fallback = StartFallback(message);
-                try
-                {
-                    await fallback.WaitForExitAsync(cancellationToken);
-                }
-                catch (OperationCanceledException) when (cancellationToken.IsCancellationRequested)
-                {
-                    await StopRendererAsync(fallback);
-                    break;
-                }
-
-                await Console.Error.WriteLineAsync(
-                    $"Fallback renderer exited with code {fallback.ExitCode}; retrying wallpaper.");
-                consecutiveFailures = 0;
-                continue;
-            }
-
-            var restartDelay = GetRestartDelay(consecutiveFailures);
-            await Console.Error.WriteLineAsync($"Restarting renderer in {restartDelay.TotalSeconds:0.##} seconds.");
-
-            try
-            {
-                await Task.Delay(restartDelay, cancellationToken);
-            }
-            catch (OperationCanceledException) when (cancellationToken.IsCancellationRequested)
-            {
-                break;
             }
         }
 
-        Console.WriteLine("LivePaper daemon stopped.");
+        async Task SuperviseRenderersAsync(CancellationToken token)
+        {
+            while (!token.IsCancellationRequested)
+            {
+                using var ipc = RendererIpcServer.Create();
+                using var renderer = StartRenderer(ipc.SocketPath, out var rendererErrors);
+                var startedAt = Stopwatch.GetTimestamp();
+                Console.WriteLine($"Renderer started (PID {renderer.Id}).");
+
+                try
+                {
+                    using var handshakeTimeout = CancellationTokenSource.CreateLinkedTokenSource(cancellationToken);
+                    handshakeTimeout.CancelAfter(TimeSpan.FromSeconds(5));
+                    await ipc.AcceptAsync(handshakeTimeout.Token);
+                    await ipc.SendAsync(HostMessage.ForInitialState(
+                        ApplyPolicies(visibilitySource.Current),
+                        pointerPositionSource?.Current));
+                    Console.WriteLine($"Renderer connected to protocol {ProtocolVersion.Current}.");
+
+                    var updates = Channel.CreateUnbounded<HostMessage>(
+                        new UnboundedChannelOptions { SingleReader = true, SingleWriter = false });
+                    void OnVisibilityChanged(object? sender, VisibilityChanged state) =>
+                        updates.Writer.TryWrite(HostMessage.ForVisibility(ApplyPolicies(state)));
+                    void OnPointerPositionChanged(object? sender, PointerPositionChanged position) =>
+                        updates.Writer.TryWrite(HostMessage.ForPointerPosition(position));
+                    void OnAudioSpectrumChanged(object? sender, AudioSpectrumChanged spectrum) =>
+                        updates.Writer.TryWrite(HostMessage.ForAudioSpectrum(spectrum));
+                    visibilitySource.Changed += OnVisibilityChanged;
+                    if (pointerPositionSource is not null)
+                    {
+                        pointerPositionSource.Changed += OnPointerPositionChanged;
+                    }
+                    if (audioSpectrumSource is not null)
+                    {
+                        audioSpectrumSource.Changed += OnAudioSpectrumChanged;
+                    }
+                    try
+                    {
+                        await ForwardUpdatesUntilExitAsync(renderer, ipc, updates.Reader, handshakeTimeout.Token);
+                    }
+                    finally
+                    {
+                        visibilitySource.Changed -= OnVisibilityChanged;
+                        if (pointerPositionSource is not null)
+                        {
+                            pointerPositionSource.Changed -= OnPointerPositionChanged;
+                        }
+                        if (audioSpectrumSource is not null)
+                        {
+                            audioSpectrumSource.Changed -= OnAudioSpectrumChanged;
+                        }
+                        updates.Writer.TryComplete();
+                    }
+                }
+                catch (OperationCanceledException) when (!cancellationToken.IsCancellationRequested)
+                {
+                    await Console.Error.WriteLineAsync("Renderer did not complete the protocol handshake within 5 seconds.");
+                    await StopRendererAsync(renderer);
+                }
+                catch (OperationCanceledException) when (cancellationToken.IsCancellationRequested)
+                {
+                    await StopRendererAsync(renderer);
+                    break;
+                }
+
+                var runTime = Stopwatch.GetElapsedTime(startedAt);
+                await Console.Error.WriteLineAsync($"Renderer exited with code {renderer.ExitCode} after {runTime:g}.");
+
+                consecutiveFailures = runTime >= StableRunTime ? 0 : consecutiveFailures + 1;
+                if (consecutiveFailures >= FailureLimit)
+                {
+                    var message = GetFallbackMessage(rendererErrors, renderer.ExitCode);
+                    await Console.Error.WriteLineAsync(
+                        $"Renderer failed {consecutiveFailures} times; showing fallback wallpaper: {message}");
+                    using var fallback = StartFallback(message);
+                    try
+                    {
+                        await fallback.WaitForExitAsync(token);
+                    }
+                    catch (OperationCanceledException) when (cancellationToken.IsCancellationRequested)
+                    {
+                        await StopRendererAsync(fallback);
+                        break;
+                    }
+
+                    await Console.Error.WriteLineAsync(
+                        $"Fallback renderer exited with code {fallback.ExitCode}; retrying wallpaper.");
+                    consecutiveFailures = 0;
+                    continue;
+                }
+
+                var restartDelay = GetRestartDelay(consecutiveFailures);
+                await Console.Error.WriteLineAsync($"Restarting renderer in {restartDelay.TotalSeconds:0.##} seconds.");
+
+                try
+                {
+                    await Task.Delay(restartDelay, token);
+                }
+                catch (OperationCanceledException) when (cancellationToken.IsCancellationRequested)
+                {
+                    break;
+                }
+            }
+
+            Console.WriteLine("LivePaper daemon stopped.");
+        }
     }
 
     private VisibilityChanged ApplyPolicies(VisibilityChanged visibility) => new(

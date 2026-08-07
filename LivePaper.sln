@@ -12,6 +12,8 @@ Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "LivePaper.Protocol.Tests", 
 EndProject
 Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "LivePaper.Platform.Tests", "tests\LivePaper.Platform.Tests\LivePaper.Platform.Tests.csproj", "{A542211D-EAD9-49F0-91C3-CB8D6442D653}"
 EndProject
+Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "LivePaper.Daemon.Tests", "tests\LivePaper.Daemon.Tests\LivePaper.Daemon.Tests.csproj", "{5934863E-E43A-4DC1-A76E-84964A9495E7}"
+EndProject
 Global
 	GlobalSection(SolutionConfigurationPlatforms) = preSolution
 		Debug|Any CPU = Debug|Any CPU
@@ -42,5 +44,9 @@ Global
 		{A542211D-EAD9-49F0-91C3-CB8D6442D653}.Debug|Any CPU.Build.0 = Debug|Any CPU
 		{A542211D-EAD9-49F0-91C3-CB8D6442D653}.Release|Any CPU.ActiveCfg = Release|Any CPU
 		{A542211D-EAD9-49F0-91C3-CB8D6442D653}.Release|Any CPU.Build.0 = Release|Any CPU
+		{5934863E-E43A-4DC1-A76E-84964A9495E7}.Debug|Any CPU.ActiveCfg = Debug|Any CPU
+		{5934863E-E43A-4DC1-A76E-84964A9495E7}.Debug|Any CPU.Build.0 = Debug|Any CPU
+		{5934863E-E43A-4DC1-A76E-84964A9495E7}.Release|Any CPU.ActiveCfg = Release|Any CPU
+		{5934863E-E43A-4DC1-A76E-84964A9495E7}.Release|Any CPU.Build.0 = Release|Any CPU
 	EndGlobalSection
 EndGlobal

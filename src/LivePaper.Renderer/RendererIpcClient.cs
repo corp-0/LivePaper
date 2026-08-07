@@ -52,6 +52,7 @@ public sealed class RendererIpcClient : IDisposable
     public async Task ListenAsync(
         Action<VisibilityChanged> onVisibility,
         Action<PointerPositionChanged> onPointerPosition,
+        Action<AudioSpectrumChanged> onAudioSpectrum,
         CancellationToken cancellationToken)
     {
         while (!cancellationToken.IsCancellationRequested)
@@ -65,6 +66,11 @@ public sealed class RendererIpcClient : IDisposable
                 message.PointerPosition is { } pointerPosition)
             {
                 onPointerPosition(pointerPosition);
+            }
+            else if (message.Kind == HostMessageKind.AudioSpectrumChanged &&
+                message.AudioSpectrum is { } audioSpectrum)
+            {
+                onAudioSpectrum(audioSpectrum);
             }
         }
     }

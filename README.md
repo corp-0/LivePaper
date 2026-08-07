@@ -1,7 +1,7 @@
 # LivePaper
 
 LivePaper is a Wayland-native live wallpaper engine where wallpapers are ordinary web pages.
-Currently it only supports KWin, but you should be able to contribute an implementation for your own compositor.
+It currently ships with a KWin platform backend and a PipeWire audio backend. These are implementations of replaceable interfaces, so support for other compositors and audio systems can be contributed without changing the wallpaper API.
 
 ## Features
 

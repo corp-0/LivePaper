@@ -231,8 +231,16 @@ public sealed class WallpaperHttpServer : IDisposable
               };
               const livepaper = new EventTarget();
               let pointerPosition = {{initialPointerPosition}};
+              let audioSpectrum = null;
+              let audioListener = null;
               Object.defineProperty(livepaper, "visibility", { get: () => visibility, enumerable: true });
               Object.defineProperty(livepaper, "pointerPosition", { get: () => pointerPosition, enumerable: true });
+              Object.defineProperty(livepaper, "audioSpectrum", { get: () => audioSpectrum, enumerable: true });
+              Object.defineProperty(livepaper, "_setAudioSpectrum", { value: next => {
+                audioSpectrum = Object.freeze(next);
+                audioListener?.(audioSpectrum);
+                livepaper.dispatchEvent(new CustomEvent("audiospectrumchange", { detail: audioSpectrum }));
+              } });
               Object.defineProperty(livepaper, "_setPointerPosition", { value: next => {
                 pointerPosition = Object.freeze(next);
                 livepaper.dispatchEvent(new CustomEvent("pointerpositionchange", { detail: pointerPosition }));
@@ -252,6 +260,10 @@ public sealed class WallpaperHttpServer : IDisposable
                 livepaper.dispatchEvent(new CustomEvent("visibilitychange", { detail: visibility }));
               } });
               Object.defineProperty(window, "livepaper", { value: livepaper, enumerable: true });
+              Object.defineProperty(window, "wallpaperRegisterAudioListener", { value: listener => {
+                if (typeof listener !== "function") throw new TypeError("Audio listener must be a function.");
+                audioListener = listener;
+              } });
               const metrics = {
                 raf: 0,
                 clear: 0,

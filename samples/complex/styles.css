@@ -1,0 +1,142 @@
+:root {
+  color-scheme: dark;
+  font-family: system-ui, sans-serif;
+  color: #fcfcfd;
+  background: #05131e;
+}
+
+* {
+  box-sizing: border-box;
+}
+
+html,
+body {
+  width: 100%;
+  height: 100%;
+  margin: 0;
+  overflow: hidden;
+}
+
+.space {
+  position: fixed;
+  z-index: -1;
+  inset: 0;
+  overflow: hidden;
+  pointer-events: none;
+}
+
+.stars {
+  --tile-size: 480px;
+  --drift-duration: 180s;
+  position: absolute;
+  inset: 0 calc(var(--tile-size) * -1) calc(var(--tile-size) * -1) 0;
+  background-repeat: repeat;
+  background-size: var(--tile-size);
+  animation: drift var(--drift-duration) linear infinite;
+  will-change: transform;
+}
+
+.stars-far {
+  --tile-size: 1200px;
+  --drift-duration: 600s;
+  background-image: url("background/parallax/parallax_layer1.png");
+}
+
+.stars-middle {
+  --tile-size: 840px;
+  --drift-duration: 140s;
+  background-image: url("background/parallax/parallax_layer2_overlay.png");
+}
+
+.stars-near {
+  --tile-size: 600px;
+  --drift-duration: 46s;
+  background-image: url("background/parallax/parallax_layer3_overlay.png");
+}
+
+.planet {
+  position: absolute;
+  top: 14vh;
+  right: 4vw;
+  width: clamp(220px, 30vw, 420px);
+  user-select: none;
+}
+
+main {
+  display: grid;
+  min-height: 100%;
+  place-items: center;
+}
+
+h1 {
+  margin: 0;
+  font-size: clamp(3rem, 7vw, 4.5rem);
+  line-height: 1;
+  letter-spacing: -0.025em;
+}
+
+.clown {
+  position: fixed;
+  z-index: 2;
+  top: 0;
+  left: 0;
+  width: 64px;
+  height: 64px;
+  padding: 0;
+  border: 0;
+  border-radius: 50%;
+  background: transparent;
+  cursor: pointer;
+  will-change: transform;
+}
+
+.clown:focus-visible {
+  outline: 2px solid #4fa1db;
+}
+
+.clown img {
+  display: block;
+  image-rendering: pixelated;
+  animation: spin 5s linear infinite;
+}
+
+.counter {
+  position: fixed;
+  z-index: 2;
+  top: 80px;
+  left: 16px;
+  max-width: 288px;
+  padding: 8px 12px;
+  border: 1px solid #242e3b;
+  border-radius: 6px;
+  color: #c5d0dc;
+  background: #151c26;
+  box-shadow: 0 6px 20px #0006;
+  font: 11px/1.5 ui-monospace, monospace;
+  letter-spacing: 0.14em;
+  text-transform: uppercase;
+}
+
+.counter p {
+  margin: 0;
+}
+
+.taunt {
+  margin-top: 4px !important;
+  color: #e8a81c;
+}
+
+@keyframes drift {
+  to { transform: translateX(calc(var(--tile-size) * -1)); }
+}
+
+@keyframes spin {
+  to { transform: rotate(360deg); }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .stars,
+  .clown img {
+    animation: none;
+  }
+}

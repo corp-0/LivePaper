@@ -1,0 +1,11 @@
+<Project Sdk="Microsoft.NET.Sdk">
+  <ItemGroup>
+    <ProjectReference Include="../LivePaper.Protocol/LivePaper.Protocol.csproj" />
+  </ItemGroup>
+  <ItemGroup>
+    <PackageReference Include="Tmds.DBus.Protocol" />
+  </ItemGroup>
+  <ItemGroup>
+    <EmbeddedResource Include="KWin/*.js" />
+  </ItemGroup>
+</Project>

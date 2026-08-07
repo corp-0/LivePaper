@@ -1,0 +1,33 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Unitystation</title>
+  <link rel="stylesheet" href="styles.css">
+</head>
+<body>
+  <div class="space" aria-hidden="true">
+    <div class="stars stars-far"></div>
+    <img class="planet" src="background/parallax/parallax_planet.png" alt="" draggable="false">
+    <div class="stars stars-middle"></div>
+    <div class="stars stars-near"></div>
+  </div>
+
+  <main>
+    <h1>Unitystation</h1>
+  </main>
+
+  <aside class="counter" aria-live="polite" hidden>
+    <p class="click-count"></p>
+    <p class="taunt" hidden></p>
+  </aside>
+
+  <button class="clown" type="button" aria-label="Honk the clown">
+    <img src="clown/clown.png" alt="" width="64" height="64">
+  </button>
+  <audio class="bike-horn" src="clown/bikehorn.ogg" preload="auto"></audio>
+
+  <script src="wallpaper.js"></script>
+</body>
+</html>

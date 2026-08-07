@@ -1,0 +1,46 @@
+﻿
+Microsoft Visual Studio Solution File, Format Version 12.00
+Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "LivePaper.Daemon", "src\LivePaper.Daemon\LivePaper.Daemon.csproj", "{4B392CC9-5335-4607-89D2-3EC4493D0508}"
+EndProject
+Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "LivePaper.Renderer", "src\LivePaper.Renderer\LivePaper.Renderer.csproj", "{E0EA174A-6232-47C2-8D23-1D4358B29F31}"
+EndProject
+Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "LivePaper.Protocol", "src\LivePaper.Protocol\LivePaper.Protocol.csproj", "{DB4529DF-D5EA-4BB7-9781-4C6347840C4C}"
+EndProject
+Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "LivePaper.Platform", "src\LivePaper.Platform\LivePaper.Platform.csproj", "{B3FDBE21-C5BF-4431-A919-4E759774787D}"
+EndProject
+Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "LivePaper.Protocol.Tests", "tests\LivePaper.Protocol.Tests\LivePaper.Protocol.Tests.csproj", "{D3356EA4-BBC3-4665-A1BC-8EE61B6FC8B3}"
+EndProject
+Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "LivePaper.Platform.Tests", "tests\LivePaper.Platform.Tests\LivePaper.Platform.Tests.csproj", "{A542211D-EAD9-49F0-91C3-CB8D6442D653}"
+EndProject
+Global
+	GlobalSection(SolutionConfigurationPlatforms) = preSolution
+		Debug|Any CPU = Debug|Any CPU
+		Release|Any CPU = Release|Any CPU
+	EndGlobalSection
+	GlobalSection(ProjectConfigurationPlatforms) = postSolution
+		{4B392CC9-5335-4607-89D2-3EC4493D0508}.Debug|Any CPU.ActiveCfg = Debug|Any CPU
+		{4B392CC9-5335-4607-89D2-3EC4493D0508}.Debug|Any CPU.Build.0 = Debug|Any CPU
+		{4B392CC9-5335-4607-89D2-3EC4493D0508}.Release|Any CPU.ActiveCfg = Release|Any CPU
+		{4B392CC9-5335-4607-89D2-3EC4493D0508}.Release|Any CPU.Build.0 = Release|Any CPU
+		{E0EA174A-6232-47C2-8D23-1D4358B29F31}.Debug|Any CPU.ActiveCfg = Debug|Any CPU
+		{E0EA174A-6232-47C2-8D23-1D4358B29F31}.Debug|Any CPU.Build.0 = Debug|Any CPU
+		{E0EA174A-6232-47C2-8D23-1D4358B29F31}.Release|Any CPU.ActiveCfg = Release|Any CPU
+		{E0EA174A-6232-47C2-8D23-1D4358B29F31}.Release|Any CPU.Build.0 = Release|Any CPU
+		{DB4529DF-D5EA-4BB7-9781-4C6347840C4C}.Debug|Any CPU.ActiveCfg = Debug|Any CPU
+		{DB4529DF-D5EA-4BB7-9781-4C6347840C4C}.Debug|Any CPU.Build.0 = Debug|Any CPU
+		{DB4529DF-D5EA-4BB7-9781-4C6347840C4C}.Release|Any CPU.ActiveCfg = Release|Any CPU
+		{DB4529DF-D5EA-4BB7-9781-4C6347840C4C}.Release|Any CPU.Build.0 = Release|Any CPU
+		{B3FDBE21-C5BF-4431-A919-4E759774787D}.Debug|Any CPU.ActiveCfg = Debug|Any CPU
+		{B3FDBE21-C5BF-4431-A919-4E759774787D}.Debug|Any CPU.Build.0 = Debug|Any CPU
+		{B3FDBE21-C5BF-4431-A919-4E759774787D}.Release|Any CPU.ActiveCfg = Release|Any CPU
+		{B3FDBE21-C5BF-4431-A919-4E759774787D}.Release|Any CPU.Build.0 = Release|Any CPU
+		{D3356EA4-BBC3-4665-A1BC-8EE61B6FC8B3}.Debug|Any CPU.ActiveCfg = Debug|Any CPU
+		{D3356EA4-BBC3-4665-A1BC-8EE61B6FC8B3}.Debug|Any CPU.Build.0 = Debug|Any CPU
+		{D3356EA4-BBC3-4665-A1BC-8EE61B6FC8B3}.Release|Any CPU.ActiveCfg = Release|Any CPU
+		{D3356EA4-BBC3-4665-A1BC-8EE61B6FC8B3}.Release|Any CPU.Build.0 = Release|Any CPU
+		{A542211D-EAD9-49F0-91C3-CB8D6442D653}.Debug|Any CPU.ActiveCfg = Debug|Any CPU
+		{A542211D-EAD9-49F0-91C3-CB8D6442D653}.Debug|Any CPU.Build.0 = Debug|Any CPU
+		{A542211D-EAD9-49F0-91C3-CB8D6442D653}.Release|Any CPU.ActiveCfg = Release|Any CPU
+		{A542211D-EAD9-49F0-91C3-CB8D6442D653}.Release|Any CPU.Build.0 = Release|Any CPU
+	EndGlobalSection
+EndGlobal

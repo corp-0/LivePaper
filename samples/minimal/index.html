@@ -1,0 +1,81 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <title>LivePaper Minimal</title>
+    <style>
+      html, body { width: 100%; height: 100%; margin: 0; }
+      body {
+        overflow: hidden;
+        background: #09090f;
+        color: #f8fafc;
+        font-family: system-ui, sans-serif;
+      }
+
+      .glow {
+        position: absolute;
+        width: 70vmin;
+        aspect-ratio: 1;
+        border-radius: 50%;
+        background: radial-gradient(
+          circle at 35% 35%,
+          rgb(103 232 249 / 95%) 0%,
+          rgb(124 58 237 / 78%) 28%,
+          rgb(76 29 149 / 35%) 52%,
+          rgb(49 46 129 / 10%) 68%,
+          transparent 82%
+        );
+        animation: drift 8s ease-in-out infinite alternate;
+      }
+
+      .label {
+        position: absolute;
+        left: 5vw;
+        bottom: 6vh;
+        font-size: clamp(2rem, 5vw, 6rem);
+        font-weight: 700;
+        letter-spacing: -0.05em;
+      }
+
+      .host-state {
+        position: absolute;
+        right: 2rem;
+        bottom: 2rem;
+        padding: 0.6rem 0.9rem;
+        border: 1px solid rgb(255 255 255 / 18%);
+        border-radius: 999px;
+        background: rgb(15 23 42 / 70%);
+        font: 500 0.9rem/1 system-ui, sans-serif;
+        letter-spacing: 0.02em;
+      }
+
+      @keyframes drift {
+        from { transform: translate(8vw, 8vh) scale(0.9); }
+        to { transform: translate(48vw, 28vh) scale(1.25); }
+      }
+
+      body[data-rendering="false"] .glow {
+        animation-play-state: paused;
+      }
+    </style>
+  </head>
+  <body>
+    <div class="glow"></div>
+    <div class="label">LivePaper</div>
+    <div class="host-state" id="host-state">Waiting for host…</div>
+    <script>
+      const hostState = document.querySelector("#host-state");
+
+      if (window.livepaper) {
+        livepaper.addEventListener("visibilitychange", event => {
+          const { state, shouldRender } = event.detail;
+          hostState.textContent = `Host: ${state} · ${shouldRender ? "rendering" : "paused"}`;
+          document.body.dataset.rendering = String(shouldRender);
+        });
+      } else {
+        hostState.textContent = "Host API unavailable";
+      }
+    </script>
+  </body>
+</html>

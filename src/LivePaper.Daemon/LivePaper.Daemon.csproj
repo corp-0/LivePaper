@@ -1,0 +1,15 @@
+<Project Sdk="Microsoft.NET.Sdk">
+  <PropertyGroup>
+    <OutputType>Exe</OutputType>
+    <PublishAot>true</PublishAot>
+    <IsAotCompatible>true</IsAotCompatible>
+    <AllowUnsafeBlocks>true</AllowUnsafeBlocks>
+  </PropertyGroup>
+  <ItemGroup>
+    <ProjectReference Include="../LivePaper.Platform/LivePaper.Platform.csproj" />
+    <ProjectReference Include="../LivePaper.Protocol/LivePaper.Protocol.csproj" />
+  </ItemGroup>
+  <ItemGroup>
+    <PackageReference Include="Tomlyn" />
+  </ItemGroup>
+</Project>

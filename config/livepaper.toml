@@ -1,0 +1,7 @@
+[wallpaper]
+id = "wallpaper-engine.3650880224"
+
+[visibility]
+poll_interval_ms = 250
+disable_rendering_when = "fully_covered"
+mute_audio_when = "partially_covered"

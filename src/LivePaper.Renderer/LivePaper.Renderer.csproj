@@ -1,0 +1,19 @@
+<Project Sdk="Microsoft.NET.Sdk">
+  <PropertyGroup>
+    <OutputType>Exe</OutputType>
+    <PublishAot>true</PublishAot>
+    <IsAotCompatible>true</IsAotCompatible>
+    <AllowUnsafeBlocks>true</AllowUnsafeBlocks>
+  </PropertyGroup>
+  <ItemGroup>
+    <ProjectReference Include="../LivePaper.Protocol/LivePaper.Protocol.csproj" />
+  </ItemGroup>
+  <Target Name="BuildWaylandPresenter" BeforeTargets="Build">
+    <Exec Command="wayland-scanner client-header Native/wlr-layer-shell-unstable-v1.xml $(IntermediateOutputPath)wlr-layer-shell-client.h" />
+    <Exec Command="wayland-scanner private-code Native/wlr-layer-shell-unstable-v1.xml $(IntermediateOutputPath)wlr-layer-shell-protocol.c" />
+    <Exec Command="cc -shared -fPIC -O2 -I$(IntermediateOutputPath) Native/livepaper-wayland.c $(IntermediateOutputPath)wlr-layer-shell-protocol.c -o $(TargetDir)liblivepaper-wayland.so -lwayland-egl -lwayland-client -lEGL -lGLESv2" />
+  </Target>
+  <Target Name="PublishWaylandPresenter" AfterTargets="Publish">
+    <Copy SourceFiles="$(TargetDir)liblivepaper-wayland.so" DestinationFolder="$(PublishDir)" />
+  </Target>
+</Project>

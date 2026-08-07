@@ -1,0 +1,126 @@
+using LivePaper.Daemon;
+using LivePaper.Platform;
+using LivePaper.Protocol;
+using Tomlyn;
+
+try
+{
+    var importIndex = Array.IndexOf(args, "--import-wallpaper");
+    if (importIndex >= 0)
+    {
+        if (importIndex + 1 >= args.Length)
+        {
+            throw new ArgumentException("--import-wallpaper requires a source directory.");
+        }
+
+        var destinationIndex = Array.IndexOf(args, "--import-destination");
+        var destinationRoot = destinationIndex >= 0
+            ? destinationIndex + 1 < args.Length
+                ? args[destinationIndex + 1]
+                : throw new ArgumentException("--import-destination requires a directory.")
+            : null;
+        var imported = WallpaperImporter.Import(args[importIndex + 1], destinationRoot);
+        Console.WriteLine($"Imported wallpaper: {imported}");
+        return 0;
+    }
+
+    using var shutdown = new ShutdownSignalSource();
+
+    var options = DaemonOptions.Parse(args);
+    using var configWatcher = new FileChangeWatcher(options.ConfigPath);
+    while (!shutdown.IsCancellationRequested)
+    {
+        Console.WriteLine($"LivePaper daemon supervising {options.WallpaperDirectory}");
+        var manifestPath = Path.Combine(options.WallpaperDirectory, "manifest.toml");
+        var manifest = WallpaperManifest.Load(await File.ReadAllTextAsync(manifestPath, shutdown.Token));
+        using var manifestWatcher = new FileChangeWatcher(manifestPath);
+        var trackPointerPosition = manifest.HasCapability(WallpaperCapabilities.GlobalPointerTracking);
+        await using var backend = await PlatformBackendFactory.CreateAsync(
+            new PlatformBackendOptions(options.VisibilityPollInterval, trackPointerPosition));
+        using var run = CancellationTokenSource.CreateLinkedTokenSource(shutdown.Token);
+        var supervisor = new RendererSupervisor(
+            options,
+            backend.Visibility,
+            backend.PointerPosition);
+        var supervisorTask = supervisor.RunAsync(run.Token);
+        var configChangedTask = configWatcher.WaitForChangeAsync(shutdown.Token).AsTask();
+        var manifestChangedTask = manifestWatcher.WaitForChangeAsync(shutdown.Token).AsTask();
+
+        while (!shutdown.IsCancellationRequested)
+        {
+            var completed = await Task.WhenAny(supervisorTask, configChangedTask, manifestChangedTask);
+            if (completed == supervisorTask)
+            {
+                await supervisorTask;
+                break;
+            }
+
+            try
+            {
+                if (completed == manifestChangedTask)
+                {
+                    await manifestChangedTask;
+                    await manifestWatcher.DebounceAsync(shutdown.Token);
+                    try
+                    {
+                        _ = WallpaperManifest.Load(await File.ReadAllTextAsync(manifestPath, shutdown.Token));
+                        Console.WriteLine($"Active wallpaper manifest changed; reloading {manifestPath}.");
+                        run.Cancel();
+                        await supervisorTask;
+                        break;
+                    }
+                    catch (Exception exception) when (
+                        exception is IOException or InvalidDataException or TomlException)
+                    {
+                        Console.Error.WriteLine($"Ignoring invalid manifest change: {exception.Message}");
+                        manifestChangedTask = manifestWatcher.WaitForChangeAsync(shutdown.Token).AsTask();
+                        continue;
+                    }
+                }
+
+                await configChangedTask;
+                await configWatcher.DebounceAsync(shutdown.Token);
+            }
+            catch (OperationCanceledException) when (shutdown.IsCancellationRequested)
+            {
+                run.Cancel();
+                await supervisorTask;
+                break;
+            }
+            try
+            {
+                if (!File.Exists(options.ConfigPath))
+                {
+                    throw new FileNotFoundException("The config file does not exist.", options.ConfigPath);
+                }
+
+                var next = DaemonOptions.Parse(args);
+                if (next == options)
+                {
+                    configChangedTask = configWatcher.WaitForChangeAsync(shutdown.Token).AsTask();
+                    continue;
+                }
+
+                Console.WriteLine($"Config changed; reloading {options.ConfigPath}.");
+                options = next;
+                run.Cancel();
+                await supervisorTask;
+                break;
+            }
+            catch (Exception exception) when (
+                exception is ArgumentException or IOException or InvalidDataException or TomlException)
+            {
+                Console.Error.WriteLine($"Ignoring invalid config change: {exception.Message}");
+                configChangedTask = configWatcher.WaitForChangeAsync(shutdown.Token).AsTask();
+            }
+        }
+    }
+
+    return 0;
+}
+catch (Exception exception) when (
+    exception is ArgumentException or IOException or InvalidDataException or TomlException or PlatformNotSupportedException)
+{
+    Console.Error.WriteLine($"Cannot start LivePaper: {exception.Message}");
+    return 1;
+}

@@ -1,0 +1,14 @@
+[Unit]
+Description=LivePaper Wayland wallpaper daemon
+After=graphical-session.target
+PartOf=graphical-session.target
+
+[Service]
+Type=simple
+ExecStart=%h/.local/lib/livepaper/current/LivePaper.Daemon --config %h/.config/livepaper/livepaper.toml
+KillMode=mixed
+Restart=on-failure
+RestartSec=2
+
+[Install]
+WantedBy=graphical-session.target

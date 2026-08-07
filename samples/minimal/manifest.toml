@@ -1,0 +1,5 @@
+format_version = 1
+id = "livepaper.minimal"
+name = "Minimal"
+entry = "index.html"
+capabilities = []

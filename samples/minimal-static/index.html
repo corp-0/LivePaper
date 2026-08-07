@@ -1,0 +1,19 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <title>LivePaper Minimal Static</title>
+    <style>
+      html, body { width: 100%; height: 100%; margin: 0; }
+      body { overflow: hidden; background: #09090f; color: #f8fafc; font-family: system-ui, sans-serif; }
+      .glow {
+        position: absolute; width: 70vmin; aspect-ratio: 1; border-radius: 50%;
+        background: radial-gradient(circle at 35% 35%, rgb(103 232 249 / 95%) 0%, rgb(124 58 237 / 78%) 28%, rgb(76 29 149 / 35%) 52%, rgb(49 46 129 / 10%) 68%, transparent 82%);
+        transform: translate(28vw, 18vh) scale(1.07);
+      }
+      .label { position: absolute; left: 5vw; bottom: 6vh; font-size: clamp(2rem, 5vw, 6rem); font-weight: 700; letter-spacing: -0.05em; }
+    </style>
+  </head>
+  <body><div class="glow"></div><div class="label">LivePaper</div></body>
+</html>

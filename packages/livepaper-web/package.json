@@ -1,0 +1,32 @@
+{
+  "name": "@livepaper/web",
+  "version": "0.1.0",
+  "description": "TypeScript API for authoring LivePaper wallpapers",
+  "type": "module",
+  "files": [
+    "dist/index.js",
+    "dist/index.d.ts",
+    "README.md"
+  ],
+  "exports": {
+    ".": {
+      "types": "./dist/index.d.ts",
+      "import": "./dist/index.js"
+    }
+  },
+  "types": "./dist/index.d.ts",
+  "scripts": {
+    "build": "npm run clean && tsc -p tsconfig.json && esbuild src/host.ts --bundle --format=iife --target=es2022 --outfile=dist/host.js",
+    "clean": "node -e \"require('node:fs').rmSync('dist', { recursive: true, force: true })\"",
+    "check": "tsc -p tsconfig.json --noEmit",
+    "prepack": "npm run build"
+  },
+  "devDependencies": {
+    "esbuild": "0.25.8",
+    "typescript": "5.9.2"
+  },
+  "engines": {
+    "node": ">=20"
+  },
+  "license": "MIT"
+}

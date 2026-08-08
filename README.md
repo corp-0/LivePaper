@@ -29,6 +29,8 @@ src/
   LivePaper.Renderer/  Direct Wayland/WPE renderer, one surface per process
   LivePaper.Protocol/  Versioned messages and wallpaper manifest types
   LivePaper.Platform/  Linux and Wayland integration boundaries
+packages/
+  livepaper-web/       TypeScript API for native wallpaper authors
 tests/
   LivePaper.Protocol.Tests/
   LivePaper.Platform.Tests/

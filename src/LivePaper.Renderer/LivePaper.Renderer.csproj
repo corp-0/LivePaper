@@ -7,7 +7,16 @@
   </PropertyGroup>
   <ItemGroup>
     <ProjectReference Include="../LivePaper.Protocol/LivePaper.Protocol.csproj" />
+    <EmbeddedResource Include="../../packages/livepaper-web/dist/host.js"
+                      LogicalName="LivePaper.Renderer.Web.host.js" />
   </ItemGroup>
+  <Target Name="BuildLivePaperWeb" BeforeTargets="PrepareResources">
+    <Exec Condition="!Exists('../../packages/livepaper-web/node_modules')"
+          WorkingDirectory="../../packages/livepaper-web"
+          Command="npm ci" />
+    <Exec WorkingDirectory="../../packages/livepaper-web"
+          Command="npm run build" />
+  </Target>
   <Target Name="BuildWaylandPresenter" BeforeTargets="Build">
     <Exec Command="wayland-scanner client-header Native/wlr-layer-shell-unstable-v1.xml $(IntermediateOutputPath)wlr-layer-shell-client.h" />
     <Exec Command="wayland-scanner private-code Native/wlr-layer-shell-unstable-v1.xml $(IntermediateOutputPath)wlr-layer-shell-protocol.c" />

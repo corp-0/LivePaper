@@ -1,6 +1,8 @@
 using System.Net;
 using System.Net.Sockets;
+using System.Reflection;
 using System.Text;
+using System.Text.Json;
 using LivePaper.Protocol;
 
 namespace LivePaper.Renderer;
@@ -11,12 +13,10 @@ public sealed class WallpaperHttpServer : IDisposable
     private readonly string _entryPath;
     private readonly TcpListener _listener;
     private readonly bool _logRequests;
-    private readonly string? _bootstrapPropertiesJson;
-    private readonly VisibilityChanged? _bootstrapVisibility;
-    private readonly PointerPositionChanged? _bootstrapPointerPosition;
-    private readonly bool _force2DTransforms;
     private readonly CancellationTokenSource _shutdown = new();
     private readonly Task _serverTask;
+    private readonly byte[] _bootstrapConfig;
+    private static readonly byte[] HostScript = LoadHostScript();
 
     private WallpaperHttpServer(
         string root,
@@ -30,10 +30,12 @@ public sealed class WallpaperHttpServer : IDisposable
         _root = root;
         _entryPath = Path.GetFullPath(entry, root);
         _logRequests = logRequests;
-        _bootstrapPropertiesJson = bootstrapPropertiesJson;
-        _bootstrapVisibility = bootstrapVisibility;
-        _bootstrapPointerPosition = bootstrapPointerPosition;
-        _force2DTransforms = force2DTransforms;
+        _bootstrapConfig = BuildBootstrapConfig(
+            bootstrapPropertiesJson,
+            bootstrapVisibility,
+            bootstrapPointerPosition,
+            force2DTransforms,
+            logRequests);
         _listener = new TcpListener(IPAddress.Loopback, 0);
         _listener.Start();
         var port = ((IPEndPoint)_listener.LocalEndpoint).Port;
@@ -133,6 +135,28 @@ public sealed class WallpaperHttpServer : IDisposable
                     return;
                 }
 
+                if (requestPath == "/__livepaper/host.js")
+                {
+                    await SendBytesAsync(
+                        stream,
+                        HostScript,
+                        "application/javascript; charset=utf-8",
+                        parts[0] == "HEAD",
+                        cancellationToken);
+                    return;
+                }
+
+                if (requestPath == "/__livepaper/config.json")
+                {
+                    await SendBytesAsync(
+                        stream,
+                        _bootstrapConfig,
+                        "application/json; charset=utf-8",
+                        parts[0] == "HEAD",
+                        cancellationToken);
+                    return;
+                }
+
                 var relativePath = Uri.UnescapeDataString(requestPath).TrimStart('/');
                 var filePath = Path.GetFullPath(relativePath.Replace('/', Path.DirectorySeparatorChar), _root);
                 var relative = Path.GetRelativePath(_root, filePath);
@@ -148,17 +172,12 @@ public sealed class WallpaperHttpServer : IDisposable
                 {
                     Console.WriteLine($"Wallpaper HTTP 200: {requestPath}");
                 }
-                if ((_bootstrapPropertiesJson is not null || _bootstrapVisibility is not null ||
-                    _bootstrapPointerPosition is not null || _force2DTransforms) && filePath == _entryPath)
+                if (filePath == _entryPath)
                 {
                     await SendEntryWithBootstrapAsync(
                         stream,
                         filePath,
                         parts[0] == "HEAD",
-                        _bootstrapPropertiesJson,
-                        _bootstrapVisibility,
-                        _bootstrapPointerPosition,
-                        _force2DTransforms,
                         cancellationToken);
                 }
                 else
@@ -176,178 +195,29 @@ public sealed class WallpaperHttpServer : IDisposable
         NetworkStream stream,
         string filePath,
         bool headersOnly,
-        string? propertiesJson,
-        VisibilityChanged? visibility,
-        PointerPositionChanged? pointerPosition,
-        bool force2DTransforms,
         CancellationToken cancellationToken)
     {
         var html = await File.ReadAllTextAsync(filePath, cancellationToken);
-        var properties = propertiesJson ?? "null";
-        var visibilityState = visibility?.State.ToString() ?? VisibilityState.Visible.ToString();
-        var shouldRender = visibility?.ShouldRender is not false ? "true" : "false";
-        var shouldMute = visibility?.ShouldMute is true ? "true" : "false";
-        var initialPointerPosition = pointerPosition is null
-            ? "null"
-            : $"Object.freeze({{ x: {pointerPosition.X:R}, y: {pointerPosition.Y:R} }})";
-        var force2D = force2DTransforms ? "true" : "false";
-        var script = $$"""
-            <script>
-            (() => {
-              if ({{force2D}}) {
-                const to2D = value => typeof value === "string"
-                  ? value.replace(/translate3d\(\s*([^,]+),\s*([^,]+),\s*0(?:px)?\s*\)/gi, "translate($1, $2)")
-                  : value;
-                const style = CSSStyleDeclaration.prototype;
-                for (const property of ["transform", "webkitTransform"]) {
-                  const descriptor = Object.getOwnPropertyDescriptor(style, property);
-                  if (!descriptor?.set) continue;
-                  Object.defineProperty(style, property, {
-                    ...descriptor,
-                    set(value) { descriptor.set.call(this, to2D(value)); }
-                  });
-                }
-                const nativeSetProperty = style.setProperty;
-                style.setProperty = function (property, value, priority) {
-                  return nativeSetProperty.call(
-                    this,
-                    property,
-                    property === "transform" || property === "-webkit-transform" ? to2D(value) : value,
-                    priority);
-                };
-              }
-              const properties = {{properties}};
-              let visibility = Object.freeze({
-                state: "{{visibilityState}}",
-                shouldRender: {{shouldRender}},
-                shouldMute: {{shouldMute}}
-              });
-              const mediaElements = new Set();
-              const nativeMediaPlay = HTMLMediaElement.prototype.play;
-              HTMLMediaElement.prototype.play = function (...args) {
-                mediaElements.add(this);
-                this.muted = visibility.shouldMute;
-                return nativeMediaPlay.apply(this, args);
-              };
-              const livepaper = new EventTarget();
-              let pointerPosition = {{initialPointerPosition}};
-              let audioSpectrum = null;
-              let audioListener = null;
-              Object.defineProperty(livepaper, "visibility", { get: () => visibility, enumerable: true });
-              Object.defineProperty(livepaper, "pointerPosition", { get: () => pointerPosition, enumerable: true });
-              Object.defineProperty(livepaper, "audioSpectrum", { get: () => audioSpectrum, enumerable: true });
-              Object.defineProperty(livepaper, "_setAudioSpectrum", { value: next => {
-                audioSpectrum = Object.freeze(next);
-                audioListener?.(audioSpectrum);
-                livepaper.dispatchEvent(new CustomEvent("audiospectrumchange", { detail: audioSpectrum }));
-              } });
-              Object.defineProperty(livepaper, "_setPointerPosition", { value: next => {
-                pointerPosition = Object.freeze(next);
-                livepaper.dispatchEvent(new CustomEvent("pointerpositionchange", { detail: pointerPosition }));
-                const target = document.elementFromPoint(pointerPosition.x, pointerPosition.y) ?? window;
-                target.dispatchEvent(new MouseEvent("mousemove", {
-                  bubbles: true,
-                  composed: true,
-                  clientX: pointerPosition.x,
-                  clientY: pointerPosition.y,
-                  screenX: pointerPosition.x,
-                  screenY: pointerPosition.y
-                }));
-              } });
-              Object.defineProperty(livepaper, "_setVisibility", { value: next => {
-                visibility = Object.freeze(next);
-                for (const media of mediaElements) media.muted = visibility.shouldMute;
-                livepaper.dispatchEvent(new CustomEvent("visibilitychange", { detail: visibility }));
-              } });
-              Object.defineProperty(window, "livepaper", { value: livepaper, enumerable: true });
-              Object.defineProperty(window, "wallpaperRegisterAudioListener", { value: listener => {
-                if (typeof listener !== "function") throw new TypeError("Audio listener must be a function.");
-                audioListener = listener;
-              } });
-              const metrics = {
-                raf: 0,
-                clear: 0,
-                drawArrays: 0,
-                drawElements: 0,
-                mousemove: 0,
-                mousedown: 0,
-                mouseup: 0,
-                click: 0,
-                wheel: 0,
-                mousemoveTarget: null
-              };
-              window.addEventListener("mousemove", event => {
-                metrics.mousemove++;
-                metrics.mousemoveTarget = event.target?.id || event.target?.tagName || null;
-              });
-              for (const type of ["mousedown", "mouseup", "click", "wheel"]) {
-                window.addEventListener(type, () => metrics[type]++);
-              }
-              const nativeRequestAnimationFrame = window.requestAnimationFrame.bind(window);
-              window.requestAnimationFrame = callback => nativeRequestAnimationFrame(timestamp => {
-                metrics.raf++;
-                callback(timestamp);
-              });
-              for (const prototype of [
-                globalThis.WebGLRenderingContext?.prototype,
-                globalThis.WebGL2RenderingContext?.prototype
-              ]) {
-                if (!prototype) continue;
-                for (const method of ["clear", "drawArrays", "drawElements"]) {
-                  const nativeMethod = prototype[method];
-                  if (typeof nativeMethod !== "function") continue;
-                  prototype[method] = function (...args) {
-                    metrics[method]++;
-                    return nativeMethod.apply(this, args);
-                  };
-                }
-              }
-              const apply = () => {
-                if (!properties) return;
-                const listener = window.wallpaperPropertyListener;
-                if (typeof listener?.applyUserProperties === "function") {
-                  listener.applyUserProperties(properties);
-                } else {
-                  window.setTimeout(apply, 0);
-                }
-              };
-              window.addEventListener("DOMContentLoaded", () => {
-                if (pointerPosition) livepaper._setPointerPosition(pointerPosition);
-                apply();
-              }, { once: true });
-              window.setTimeout(() => {
-                const canvas = document.querySelector("canvas");
-                const context = canvas?.getContext("webgl") ?? canvas?.getContext("experimental-webgl");
-                const report = {
-                  ...metrics,
-                  pointerPosition: livepaper.pointerPosition,
-                  layers: Array.from(document.querySelectorAll(".layer"), layer => layer.style.transform),
-                  canvas: canvas ? `${canvas.width}x${canvas.height}` : null,
-                  webgl: context ? context.getParameter(context.RENDERER) : null,
-                  media: Array.from(document.querySelectorAll("audio,video"), element => ({
-                    paused: element.paused,
-                    muted: element.muted,
-                    volume: element.volume,
-                    readyState: element.readyState,
-                    error: element.error?.message ?? null
-                  })),
-                  bgm: typeof bgm === "undefined" || !bgm ? null : {
-                    paused: bgm.paused,
-                    muted: bgm.muted,
-                    volume: bgm.volume,
-                    readyState: bgm.readyState,
-                    error: bgm.error?.message ?? null
-                  }
-                };
-                fetch(`/__livepaper_benchmark_report?${encodeURIComponent(JSON.stringify(report))}`);
-              }, 10000);
-            })();
-            </script>
-            """;
-        var body = Encoding.UTF8.GetBytes(script + html);
+        const string bootstrap = "<script src=\"/__livepaper/host.js\"></script>";
+        var body = Encoding.UTF8.GetBytes(bootstrap + html);
+        await SendBytesAsync(
+            stream,
+            body,
+            "text/html; charset=utf-8",
+            headersOnly,
+            cancellationToken);
+    }
+
+    private static async Task SendBytesAsync(
+        NetworkStream stream,
+        byte[] body,
+        string contentType,
+        bool headersOnly,
+        CancellationToken cancellationToken)
+    {
         var response = Encoding.ASCII.GetBytes(
             $"HTTP/1.1 200 OK\r\n" +
-            "Content-Type: text/html; charset=utf-8\r\n" +
+            $"Content-Type: {contentType}\r\n" +
             $"Content-Length: {body.Length}\r\n" +
             "Cache-Control: no-cache\r\n" +
             "Connection: close\r\n\r\n");
@@ -356,6 +226,53 @@ public sealed class WallpaperHttpServer : IDisposable
         {
             await stream.WriteAsync(body, cancellationToken);
         }
+    }
+
+    private static byte[] BuildBootstrapConfig(
+        string? propertiesJson,
+        VisibilityChanged? visibility,
+        PointerPositionChanged? pointerPosition,
+        bool force2DTransforms,
+        bool diagnostics)
+    {
+        using var stream = new MemoryStream();
+        using var writer = new Utf8JsonWriter(stream);
+        writer.WriteStartObject();
+        writer.WritePropertyName("properties");
+        writer.WriteRawValue(propertiesJson ?? "null");
+        writer.WritePropertyName("visibility");
+        writer.WriteStartObject();
+        writer.WriteString("state", (visibility?.State ?? VisibilityState.Visible).ToString());
+        writer.WriteBoolean("shouldRender", visibility?.ShouldRender is not false);
+        writer.WriteBoolean("shouldMute", visibility?.ShouldMute is true);
+        writer.WriteEndObject();
+        writer.WritePropertyName("pointerPosition");
+        if (pointerPosition is null)
+        {
+            writer.WriteNullValue();
+        }
+        else
+        {
+            writer.WriteStartObject();
+            writer.WriteNumber("x", pointerPosition.X);
+            writer.WriteNumber("y", pointerPosition.Y);
+            writer.WriteEndObject();
+        }
+        writer.WriteBoolean("force2DTransforms", force2DTransforms);
+        writer.WriteBoolean("diagnostics", diagnostics);
+        writer.WriteEndObject();
+        writer.Flush();
+        return stream.ToArray();
+    }
+
+    private static byte[] LoadHostScript()
+    {
+        using var stream = Assembly.GetExecutingAssembly().GetManifestResourceStream(
+            "LivePaper.Renderer.Web.host.js")
+            ?? throw new InvalidOperationException("The LivePaper web host script is missing.");
+        using var output = new MemoryStream();
+        stream.CopyTo(output);
+        return output.ToArray();
     }
 
     private static async Task SendFileAsync(

@@ -1,3 +1,5 @@
+using LivePaper.Platform.KWin;
+
 namespace LivePaper.Platform;
 
 public static class PlatformBackendFactory
@@ -34,7 +36,16 @@ public static class PlatformBackendFactory
             ? PlatformBackendKind.KWin
             : PlatformBackendKind.Unsupported;
     }
+
+    public static PlatformBackendInfo? GetBackendInfo(string? desktop) =>
+        SelectBackend(desktop) switch
+        {
+            PlatformBackendKind.KWin => new("KWin/Plasma", HostsWebContent: true),
+            _ => null
+        };
 }
+
+public record PlatformBackendInfo(string DisplayName, bool HostsWebContent);
 
 public enum PlatformBackendKind
 {

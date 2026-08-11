@@ -14,7 +14,11 @@ catch (EntryPointNotFoundException exception)
     Console.Error.WriteLine($"Unsupported native library version: {exception.Message}");
     return 1;
 }
-catch (Exception exception) when (exception is IOException or ArgumentException)
+catch (Exception exception) when (
+    exception is ArgumentException or
+        IOException or
+        InvalidOperationException or
+        UnauthorizedAccessException)
 {
     Console.Error.WriteLine($"Cannot load wallpaper: {exception.Message}");
     return 1;

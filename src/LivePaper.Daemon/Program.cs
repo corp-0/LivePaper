@@ -68,8 +68,7 @@ try
         using var run = CancellationTokenSource.CreateLinkedTokenSource(shutdown.Token);
         var supervisor = new RendererSupervisor(
             options,
-            backend.Visibility,
-            backend.PointerPosition,
+            backend,
             audioSpectrumSource);
         var supervisorTask = supervisor.RunAsync(run.Token);
         var configChangedTask = configWatcher.WaitForChangeAsync(shutdown.Token).AsTask();
@@ -149,7 +148,13 @@ try
 }
 
 catch (Exception exception) when (
-    exception is ArgumentException or IOException or InvalidDataException or TomlException or PlatformNotSupportedException)
+    exception is ArgumentException or
+        IOException or
+        InvalidDataException or
+        InvalidOperationException or
+        PlatformNotSupportedException or
+        TomlException or
+        UnauthorizedAccessException)
 {
     Console.Error.WriteLine($"LivePaper failed: {exception.Message}");
     return 1;

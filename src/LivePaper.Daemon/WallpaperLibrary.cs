@@ -1,4 +1,5 @@
 using LivePaper.Protocol;
+using LivePaper.Platform;
 using System.Diagnostics;
 using System.Text.Json.Serialization;
 using Tomlyn;
@@ -11,7 +12,7 @@ internal static class WallpaperLibrary
     public static string GetDefaultRoot()
     {
         var dataHome = Environment.GetEnvironmentVariable("XDG_DATA_HOME");
-        if (string.IsNullOrWhiteSpace(dataHome))
+        if (string.IsNullOrWhiteSpace(dataHome) || !Path.IsPathFullyQualified(dataHome))
         {
             dataHome = Path.Combine(
                 Environment.GetFolderPath(Environment.SpecialFolder.UserProfile),
@@ -201,11 +202,17 @@ internal static class WallpaperLibrary
         var issueCount = 0;
         var renderer = FindRenderer();
         var pwRecord = FindExecutable("pw-record", Environment.GetEnvironmentVariable("PATH"));
+        var desktop = Environment.GetEnvironmentVariable("XDG_CURRENT_DESKTOP");
+        var backend = PlatformBackendFactory.GetBackendInfo(desktop);
         Console.WriteLine("Dependencies:");
         if (renderer is null)
         {
             Console.WriteLine("  Rendering: unavailable (LivePaper.Renderer was not found)");
             issueCount++;
+        }
+        else if (backend?.HostsWebContent is true)
+        {
+            Console.WriteLine("  Rendering: available (renderer web host)");
         }
         else
         {
@@ -227,27 +234,14 @@ internal static class WallpaperLibrary
         Console.WriteLine();
 
         Console.WriteLine("Compositor:");
-        if (string.IsNullOrWhiteSpace(Environment.GetEnvironmentVariable("WAYLAND_DISPLAY")))
+        if (backend is not null)
         {
-            Console.WriteLine("  Layer shell: unavailable (`WAYLAND_DISPLAY` is not set)");
-            issueCount++;
-        }
-        else if (renderer is null)
-        {
-            Console.WriteLine("  Layer shell: not checked (renderer unavailable)");
+            Console.WriteLine($"  Backend: {backend.DisplayName}");
         }
         else
         {
-            var compositorProbe = RunRendererProbe(renderer, "--probe");
-            if (compositorProbe.ExitCode == 0)
-            {
-                Console.WriteLine("  Layer shell: supported");
-            }
-            else
-            {
-                Console.WriteLine($"  Layer shell: unsupported ({compositorProbe.SingleLineMessage})");
-                issueCount++;
-            }
+            Console.WriteLine($"  Backend: unsupported (XDG_CURRENT_DESKTOP={desktop ?? "<unset>"})");
+            issueCount++;
         }
         Console.WriteLine();
         return issueCount;

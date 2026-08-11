@@ -1,3 +1,5 @@
+force_direct_wpe = false
+
 [wallpaper]
 id = "wallpaper-engine.3650880224"
 

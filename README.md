@@ -15,18 +15,16 @@ It currently ships with a KWin platform backend and a PipeWire audio backend. Th
 
 ## Why
 
-The Wallpaper engine plugin on KDE store only semi-works, and it will crash your entire desktop when it doesn't. I wanted instead something
-reliable and simple. So I built this little app.
-
-I decided using web wallpaper because they have a ton of benefits, such as being responsive and adapt to your resolution, provide interactions and react to data. There
-are also plenty of Wallpaper Engine wallpapers that you can just import and expect them to work, because the underlying mechanism is the same.
+Web wallpapers are responsive, interactive, and portable across display sizes.
+They also make it possible to support many existing Wallpaper Engine web
+projects without running code inside the desktop shell process.
 
 ## Repository layout
 
 ```text
 src/
   LivePaper.Daemon/    Process supervision and system integrations
-  LivePaper.Renderer/  Direct Wayland/WPE renderer, one surface per process
+  LivePaper.Renderer/  Isolated web host and compositor-selected presentation
   LivePaper.Protocol/  Versioned messages and wallpaper manifest types
   LivePaper.Platform/  Linux and Wayland integration boundaries
 packages/
@@ -45,21 +43,24 @@ If you want to try it, you can install the prerequisites and build it yourself.
 
 ## Pre-requisites
 
-The only tested environment is my machine, so x86-64 CachyOS and KDE Plasma on Wayland. If you have the same configuration, you can
-install dependencies to build and operate LivePaper with:
+LivePaper currently supports KDE Plasma 6 on Wayland. Building requires the
+.NET SDK, a C compiler, Node.js/npm, Wayland development tools, and the native
+libraries used by the selected renderer. The KWin backend requires Qt 6 WebEngine.
+The optional direct Wayland presenter requires WPE WebKit, WPE FDO, EGL, GLES,
+and a compositor that implements `wlr-layer-shell`.
+
+For Arch Linux, the core packages are:
 
 ```sh
-sudo pacman -S --needed clang dotnet-sdk wpewebkit
+sudo pacman -S --needed clang dotnet-sdk qt6-webengine wpewebkit
 ```
 
-Other configurations will have to figure out what they need. Sorry!
+Package names differ by distribution.
 
 ## User installation
 
 There is a convenience script that builds and publishes LivePaper, installs it
-for your user, and prepares the config and systemd service so you can use it
-right away. It has only been tested on my machine, so you might need to tweak it
-for your setup:
+for your user, and prepares the config and systemd service:
 
 ```sh
 ./scripts/install-user.sh
@@ -88,6 +89,8 @@ You can pick the wallpaper and configure LivePaper behavior at
 `config/livepaper.toml`:
 
 ```toml
+force_direct_wpe = false
+
 [wallpaper]
 id = "wallpaper-engine.3650880224"
 
@@ -98,6 +101,8 @@ mute_audio_when = "partially_covered"
 ```
 
 Both settings accept `never`, `fully_covered`, `partially_covered`, or `always`.
+Set `force_direct_wpe = true` to bypass compositor-hosted presentation. On
+Plasma, the direct layer-shell surface sits above desktop icons and widgets.
 
 ## Build manually
 
@@ -106,19 +111,21 @@ You can build, test, and run the daemon with:
 ```sh
 dotnet build
 dotnet test
-dotnet run --project src/LivePaper.Daemon
+dotnet run --project src/LivePaper.Daemon -- --config config/livepaper.toml
 ```
 
 The final binaries use Native AOT, so you won't need the .NET runtime after
-installing them. For now, the only publish target is Linux x64:
+installing them. Choose the runtime identifier for the target machine:
 
 ```sh
 dotnet publish src/LivePaper.Daemon -c Release -r linux-x64
 dotnet publish src/LivePaper.Renderer -c Release -r linux-x64
 ```
 
-If you just want to check whether your compositor is supported without loading
-a wallpaper:
+The installer detects `linux-x64` and `linux-arm64`. Set
+`LIVEPAPER_RUNTIME_ID` to override it.
+
+The direct renderer can probe layer-shell support without loading a wallpaper:
 
 ```sh
 dotnet run --project src/LivePaper.Renderer -- --probe
@@ -155,7 +162,7 @@ dotnet run --project src/LivePaper.Daemon -- \
   --dependency /path/to/steamapps/workshop/content/431960/9876543210
 ```
 
-Run `livepaper doctor` to check rendering libraries, layer-shell support,
+Run `livepaper doctor` to check rendering libraries, compositor support,
 PipeWire, installed manifests, entry files, and dependencies. To add a missed
 dependency, pass the installed wallpaper ID and the dependency's Workshop
 directory:

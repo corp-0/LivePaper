@@ -8,6 +8,7 @@ public sealed record DaemonOptions(
     string ConfigPath,
     string RendererPath,
     string WallpaperDirectory,
+    bool ForceDirectWpe,
     TimeSpan VisibilityPollInterval,
     CoveragePolicy DisableRenderingWhen,
     CoveragePolicy MuteAudioWhen)
@@ -37,14 +38,34 @@ public sealed record DaemonOptions(
             configPath,
             Path.GetFullPath(rendererPath),
             wallpaperDirectory,
+            config.ForceDirectWpe,
             TimeSpan.FromMilliseconds(pollIntervalMs),
             ParseCoveragePolicy(config.Visibility.DisableRenderingWhen, "disable_rendering_when"),
             ParseCoveragePolicy(config.Visibility.MuteAudioWhen, "mute_audio_when"));
     }
 
-    public static string GetConfigPath(string[] args) => Path.GetFullPath(
-        ReadOption(args, "--config")
-        ?? Path.Combine(Environment.CurrentDirectory, "config", "livepaper.toml"));
+    public static string GetConfigPath(string[] args)
+    {
+        var configured = ReadOption(args, "--config");
+        if (configured is not null)
+        {
+            return Path.GetFullPath(configured);
+        }
+
+        var configHome = Environment.GetEnvironmentVariable("XDG_CONFIG_HOME");
+        if (string.IsNullOrWhiteSpace(configHome) || !Path.IsPathFullyQualified(configHome))
+        {
+            var profile = Environment.GetFolderPath(Environment.SpecialFolder.UserProfile);
+            if (string.IsNullOrWhiteSpace(profile))
+            {
+                throw new IOException("Cannot resolve the user config directory.");
+            }
+
+            configHome = Path.Combine(profile, ".config");
+        }
+
+        return Path.Combine(configHome, "livepaper", "livepaper.toml");
+    }
 
     private static string ResolveWallpaper(string id)
     {
@@ -159,6 +180,9 @@ public sealed record DaemonOptions(
 
 public sealed class LivePaperConfig
 {
+    [JsonPropertyName("force_direct_wpe")]
+    public bool ForceDirectWpe { get; init; }
+
     [JsonPropertyName("wallpaper")]
     public WallpaperConfig Wallpaper { get; init; } = new();
 

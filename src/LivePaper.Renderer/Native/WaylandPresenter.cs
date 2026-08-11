@@ -33,6 +33,10 @@ public sealed unsafe partial class WaylandPresenter : IDisposable
 
     public nint EglDisplay => GetEglDisplay(_handle);
 
+    public uint Width => GetWidth(_handle);
+
+    public uint Height => GetHeight(_handle);
+
     public bool Present(nint image, uint width, uint height) =>
         Present(_handle, image, width, height);
 
@@ -70,6 +74,12 @@ public sealed unsafe partial class WaylandPresenter : IDisposable
 
     [LibraryImport(Library, EntryPoint = "lp_presenter_egl_display")]
     private static partial nint GetEglDisplay(nint presenter);
+
+    [LibraryImport(Library, EntryPoint = "lp_presenter_width")]
+    private static partial uint GetWidth(nint presenter);
+
+    [LibraryImport(Library, EntryPoint = "lp_presenter_height")]
+    private static partial uint GetHeight(nint presenter);
 
     [LibraryImport(Library, EntryPoint = "lp_presenter_fd")]
     private static partial int GetFileDescriptor(nint presenter);

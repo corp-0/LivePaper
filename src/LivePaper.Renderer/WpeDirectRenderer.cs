@@ -34,6 +34,8 @@ public sealed unsafe class WpeDirectRenderer : IDisposable
         _diagnosticsEnabled = diagnosticsEnabled;
         _selfHandle = GCHandle.Alloc(this);
         _presenter = new WaylandPresenter(width, height, interactive);
+        Width = _presenter.Width;
+        Height = _presenter.Height;
         Wpe.InitializeLoader("libWPEBackend-fdo-1.0.so.1");
         if (!Wpe.InitializeForEglDisplay(_presenter.EglDisplay))
         {
@@ -51,17 +53,21 @@ public sealed unsafe class WpeDirectRenderer : IDisposable
         _exportable = Wpe.CreateExportableBackend(
             _client,
             GCHandle.ToIntPtr(_selfHandle),
-            width,
-            height);
+            Width,
+            Height);
         _backend = Wpe.GetViewBackend(_exportable);
         _presenter.Input += DispatchInput;
-        Wpe.SetSize(_backend, width, height);
+        Wpe.SetSize(_backend, Width, Height);
         var webViewBackend = Wpe.CreateWebViewBackend(_backend, nint.Zero, nint.Zero);
         WebView = Wpe.CreateWebViewWithAutoplay(webViewBackend);
         Wpe.SetMediaPlaybackRequiresUserGesture(Wpe.GetSettings(WebView), false);
     }
 
     public nint WebView { get; }
+
+    public uint Width { get; }
+
+    public uint Height { get; }
 
     public void Load(string uri) => Wpe.LoadUri(WebView, uri);
 

@@ -10,6 +10,18 @@ unit_dir="$config_root/systemd/user"
 release_id=$(date -u +%Y%m%d%H%M%S)
 release_dir="$install_root/releases/$release_id"
 staging_dir=$(mktemp -d /tmp/livepaper-install.XXXXXX)
+runtime_id=${LIVEPAPER_RUNTIME_ID:-}
+
+if [[ -z "$runtime_id" ]]; then
+    case "$(uname -s):$(uname -m)" in
+        Linux:x86_64) runtime_id=linux-x64 ;;
+        Linux:aarch64|Linux:arm64) runtime_id=linux-arm64 ;;
+        *)
+            echo "Unsupported platform. Set LIVEPAPER_RUNTIME_ID to a .NET runtime identifier." >&2
+            exit 2
+            ;;
+    esac
+fi
 
 cleanup() {
     rm -rf -- "$staging_dir"
@@ -17,10 +29,10 @@ cleanup() {
 trap cleanup EXIT
 
 dotnet publish "$repo_root/src/LivePaper.Daemon/LivePaper.Daemon.csproj" \
-    -c Release -r linux-x64 --self-contained true -m:1 \
+    -c Release -r "$runtime_id" --self-contained true -m:1 \
     -o "$staging_dir/publish"
 dotnet publish "$repo_root/src/LivePaper.Renderer/LivePaper.Renderer.csproj" \
-    -c Release -r linux-x64 --self-contained true -m:1 \
+    -c Release -r "$runtime_id" --self-contained true -m:1 \
     -o "$staging_dir/publish"
 
 install -d -- "$release_dir" "$bin_path" "$config_dir" "$unit_dir"

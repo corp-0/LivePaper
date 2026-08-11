@@ -45,4 +45,17 @@ public class ProtocolJsonTests
         Assert.Equal(HostMessageKind.AudioSpectrumChanged, decoded.Kind);
         Assert.Equal(samples, decoded.AudioSpectrum?.Samples);
     }
+
+    [Fact]
+    public void RendererPresentationMessageRoundTrips()
+    {
+        var source = new Uri("http://127.0.0.1:12345/index.html");
+
+        var decoded = ProtocolJson.DeserializeRendererMessage(
+            ProtocolJson.Serialize(RendererMessage.ForPresentation(source)));
+
+        Assert.Equal(ProtocolVersion.Current, decoded.ProtocolVersion);
+        Assert.Equal(RendererMessageKind.PresentationReady, decoded.Kind);
+        Assert.Equal(source.AbsoluteUri, decoded.Source);
+    }
 }

@@ -237,6 +237,8 @@ void lp_presenter_set_input_callback(struct lp_presenter *p,
 }
 
 void *lp_presenter_egl_display(struct lp_presenter *p) { return p->egl_display; }
+uint32_t lp_presenter_width(struct lp_presenter *p) { return p->width; }
+uint32_t lp_presenter_height(struct lp_presenter *p) { return p->height; }
 int lp_presenter_fd(struct lp_presenter *p) { return wl_display_get_fd(p->display); }
 int lp_presenter_dispatch(struct lp_presenter *p) { return wl_display_dispatch(p->display); }
 

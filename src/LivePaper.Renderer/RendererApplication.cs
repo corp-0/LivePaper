@@ -28,6 +28,11 @@ public static class RendererApplication
             return RunServerOnly(args);
         }
 
+        if (args.Contains("--web-host", StringComparer.Ordinal))
+        {
+            return RunWebHost(args);
+        }
+
         if (args.Contains("--probe", StringComparer.Ordinal))
         {
             if (!WaylandPresenter.SupportsLayerShell())
@@ -44,12 +49,17 @@ public static class RendererApplication
 
     private static int RunFallback(string[] args)
     {
-        var width = GetPositiveUIntOption(args, "--wpe-width", 3440);
-        var height = GetPositiveUIntOption(args, "--wpe-height", 1440);
         var messageIndex = Array.IndexOf(args, "--message");
         var message = messageIndex >= 0 && messageIndex + 1 < args.Length
             ? args[messageIndex + 1]
             : "The wallpaper renderer stopped unexpectedly.";
+        if (args.Contains("--web-host", StringComparer.Ordinal))
+        {
+            return RunHostedFallback(args, message);
+        }
+
+        var width = GetPositiveUIntOption(args, "--wpe-width", 0);
+        var height = GetPositiveUIntOption(args, "--wpe-height", 0);
         using var presenter = new WaylandPresenter(width, height, interactive: false);
         if (!presenter.PresentFallback(message))
         {
@@ -63,12 +73,45 @@ public static class RendererApplication
         return 0;
     }
 
+    private static int RunHostedFallback(string[] args, string message)
+    {
+        using var directory = TemporaryWallpaperDirectory.CreateFallback(message);
+        using var ipc = ConnectToDaemon(args)
+            ?? throw new InvalidOperationException("The hosted fallback requires a daemon connection.");
+        var initialVisibility = ipc.InitialVisibility
+            ?? new VisibilityChanged(VisibilityState.Visible, ShouldRender: true, ShouldMute: false);
+        using var wallpaperServer = WallpaperHttpServer.Start(
+            directory.Path,
+            "index.html",
+            bootstrapVisibility: initialVisibility,
+            bootstrapPointerPosition: ipc.InitialPointerPosition,
+            remoteEvents: true);
+        ipc.SendAsync(RendererMessage.ForPresentation(wallpaperServer.EntryUri))
+            .GetAwaiter()
+            .GetResult();
+
+        Console.WriteLine($"Showing hosted fallback wallpaper: {message}");
+        using var mainLoop = GLib.CreateMainLoop();
+        using var ipcShutdown = new CancellationTokenSource();
+        var ipcTask = ipc.ListenAsync(
+            wallpaperServer.DispatchVisibility,
+            wallpaperServer.DispatchPointerPosition,
+            wallpaperServer.DispatchAudioSpectrum,
+            ipcShutdown.Token);
+        using var signals = new MainLoopSignalRegistration(mainLoop);
+        mainLoop.Run();
+        ipcShutdown.Cancel();
+        try { ipcTask.GetAwaiter().GetResult(); }
+        catch (OperationCanceledException) { }
+        return 0;
+    }
+
     private static int RunWpeDirect(string[] args)
     {
         var wallpaper = ResolveWallpaper(args);
         var diagnosticsEnabled = args.Contains("--diagnostics", StringComparer.Ordinal);
-        var width = GetPositiveUIntOption(args, "--wpe-width", 3440);
-        var height = GetPositiveUIntOption(args, "--wpe-height", 1440);
+        var width = GetPositiveUIntOption(args, "--wpe-width", 0);
+        var height = GetPositiveUIntOption(args, "--wpe-height", 0);
         using var ipc = ConnectToDaemon(args);
         var initialVisibility = ipc?.InitialVisibility
             ?? new VisibilityChanged(VisibilityState.Visible, ShouldRender: true, ShouldMute: false);
@@ -81,12 +124,12 @@ public static class RendererApplication
             initialVisibility,
             ipc?.InitialPointerPosition,
             wallpaper.Manifest.WallpaperEngine?.Force2DTransforms is true,
-            javaScriptLog is null ? null : javaScriptLog.Write);
+            onConsoleMessage: javaScriptLog is null ? null : javaScriptLog.Write);
         var interactive = wallpaper.Manifest.HasCapability(WallpaperCapabilities.PointerInput);
         using var renderer = new WpeDirectRenderer(width, height, diagnosticsEnabled, interactive);
         renderer.Load(wallpaperServer.EntryUri.AbsoluteUri);
         renderer.DispatchVisibility(initialVisibility);
-        Console.WriteLine($"Direct WPE/FDO bottom-layer presenter: {width}x{height}.");
+        Console.WriteLine($"Direct WPE/FDO bottom-layer presenter: {renderer.Width}x{renderer.Height}.");
         Console.WriteLine($"Loading wallpaper: {wallpaper.EntryPath}");
 
         using var mainLoop = GLib.CreateMainLoop();
@@ -106,6 +149,47 @@ public static class RendererApplication
             catch (OperationCanceledException) { }
         }
 
+        return 0;
+    }
+
+    private static int RunWebHost(string[] args)
+    {
+        var wallpaper = ResolveWallpaper(args);
+        var diagnosticsEnabled = args.Contains("--diagnostics", StringComparer.Ordinal);
+        using var ipc = ConnectToDaemon(args)
+            ?? throw new InvalidOperationException("The hosted web renderer requires a daemon connection.");
+        var initialVisibility = ipc.InitialVisibility
+            ?? new VisibilityChanged(VisibilityState.Visible, ShouldRender: true, ShouldMute: false);
+        var javaScriptLog = WallpaperJavaScriptLog.TryCreate(wallpaper.Manifest.Id);
+        using var wallpaperServer = WallpaperHttpServer.Start(
+            wallpaper.Directory,
+            wallpaper.Manifest.Entry,
+            diagnosticsEnabled,
+            wallpaper.InitialPropertiesJson,
+            initialVisibility,
+            ipc.InitialPointerPosition,
+            wallpaper.Manifest.WallpaperEngine?.Force2DTransforms is true,
+            remoteEvents: true,
+            onConsoleMessage: javaScriptLog is null ? null : javaScriptLog.Write);
+
+        ipc.SendAsync(RendererMessage.ForPresentation(wallpaperServer.EntryUri))
+            .GetAwaiter()
+            .GetResult();
+        Console.WriteLine($"Hosted wallpaper: {wallpaperServer.EntryUri.AbsoluteUri}");
+        Console.WriteLine($"Loading wallpaper: {wallpaper.EntryPath}");
+
+        using var mainLoop = GLib.CreateMainLoop();
+        using var ipcShutdown = new CancellationTokenSource();
+        var ipcTask = ipc.ListenAsync(
+            wallpaperServer.DispatchVisibility,
+            wallpaperServer.DispatchPointerPosition,
+            wallpaperServer.DispatchAudioSpectrum,
+            ipcShutdown.Token);
+        using var signals = new MainLoopSignalRegistration(mainLoop);
+        mainLoop.Run();
+        ipcShutdown.Cancel();
+        try { ipcTask.GetAwaiter().GetResult(); }
+        catch (OperationCanceledException) { }
         return 0;
     }
 

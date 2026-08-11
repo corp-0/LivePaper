@@ -14,6 +14,7 @@ public sealed class WallpaperHttpServer : IDisposable
     private readonly TcpListener _listener;
     private readonly bool _logRequests;
     private readonly Action<string, string>? _onConsoleMessage;
+    private readonly WallpaperEventHub? _eventHub;
     private readonly CancellationTokenSource _shutdown = new();
     private readonly Task _serverTask;
     private readonly byte[] _bootstrapConfig;
@@ -27,18 +28,23 @@ public sealed class WallpaperHttpServer : IDisposable
         VisibilityChanged? bootstrapVisibility,
         PointerPositionChanged? bootstrapPointerPosition,
         bool force2DTransforms,
+        bool remoteEvents,
         Action<string, string>? onConsoleMessage)
     {
         _root = root;
         _entryPath = Path.GetFullPath(entry, root);
         _logRequests = logRequests;
         _onConsoleMessage = onConsoleMessage;
+        _eventHub = remoteEvents
+            ? new WallpaperEventHub(bootstrapVisibility, bootstrapPointerPosition)
+            : null;
         _bootstrapConfig = BuildBootstrapConfig(
             root,
             bootstrapPropertiesJson,
             bootstrapVisibility,
             bootstrapPointerPosition,
             force2DTransforms,
+            remoteEvents,
             logRequests);
         _listener = new TcpListener(IPAddress.Loopback, 0);
         _listener.Start();
@@ -57,8 +63,33 @@ public sealed class WallpaperHttpServer : IDisposable
         VisibilityChanged? bootstrapVisibility = null,
         PointerPositionChanged? bootstrapPointerPosition = null,
         bool force2DTransforms = false,
+        bool remoteEvents = false,
         Action<string, string>? onConsoleMessage = null) =>
-        new(root, entry, logRequests, bootstrapPropertiesJson, bootstrapVisibility, bootstrapPointerPosition, force2DTransforms, onConsoleMessage);
+        new(
+            root,
+            entry,
+            logRequests,
+            bootstrapPropertiesJson,
+            bootstrapVisibility,
+            bootstrapPointerPosition,
+            force2DTransforms,
+            remoteEvents,
+            onConsoleMessage);
+
+    public void DispatchVisibility(VisibilityChanged visibility)
+    {
+        _eventHub?.Dispatch(visibility);
+    }
+
+    public void DispatchPointerPosition(PointerPositionChanged pointerPosition)
+    {
+        _eventHub?.Dispatch(pointerPosition);
+    }
+
+    public void DispatchAudioSpectrum(AudioSpectrumChanged audioSpectrum)
+    {
+        _eventHub?.Dispatch(audioSpectrum);
+    }
 
     public void Dispose()
     {
@@ -169,6 +200,23 @@ public sealed class WallpaperHttpServer : IDisposable
                     await SendBytesAsync(
                         stream,
                         _bootstrapConfig,
+                        "application/json; charset=utf-8",
+                        parts[0] == "HEAD",
+                        cancellationToken);
+                    return;
+                }
+
+                if (_eventHub is not null && requestPath == "/__livepaper/events")
+                {
+                    await _eventHub.WriteEventsAsync(stream, cancellationToken);
+                    return;
+                }
+
+                if (_eventHub is not null && requestPath == "/__livepaper/visibility")
+                {
+                    await SendBytesAsync(
+                        stream,
+                        _eventHub.GetVisibility(),
                         "application/json; charset=utf-8",
                         parts[0] == "HEAD",
                         cancellationToken);
@@ -304,6 +352,7 @@ public sealed class WallpaperHttpServer : IDisposable
         VisibilityChanged? visibility,
         PointerPositionChanged? pointerPosition,
         bool force2DTransforms,
+        bool remoteEvents,
         bool diagnostics)
     {
         using var stream = new MemoryStream();
@@ -331,6 +380,7 @@ public sealed class WallpaperHttpServer : IDisposable
             writer.WriteEndObject();
         }
         writer.WriteBoolean("force2DTransforms", force2DTransforms);
+        writer.WriteBoolean("remoteEvents", remoteEvents);
         writer.WriteBoolean("diagnostics", diagnostics);
         writer.WriteEndObject();
         writer.Flush();

@@ -1,19 +1,19 @@
 using System.Diagnostics;
 using LivePaper.Protocol;
 using LivePaper.Platform;
-using System.Threading.Channels;
 
 namespace LivePaper.Daemon;
 
 public sealed class RendererSupervisor(
     DaemonOptions options,
-    IVisibilitySource visibilitySource,
-    IPointerPositionSource? pointerPositionSource,
+    IPlatformBackend platformBackend,
     IAudioSpectrumSource? audioSpectrumSource)
 {
     private static readonly TimeSpan StableRunTime = TimeSpan.FromSeconds(30);
     private static readonly TimeSpan RendererShutdownSettleTime = TimeSpan.FromSeconds(1);
     private const int FailureLimit = 3;
+    private bool UsesHostedPresentation =>
+        !options.ForceDirectWpe && platformBackend is IHostedWallpaperBackend;
 
     public async Task RunAsync(CancellationToken cancellationToken)
     {
@@ -52,22 +52,29 @@ public sealed class RendererSupervisor(
                 {
                     await AcceptRendererAsync(ipc, TimeSpan.FromSeconds(5), cancellationToken);
                     await ipc.SendAsync(HostMessage.ForInitialState(
-                        ApplyPolicies(visibilitySource.Current),
-                        pointerPositionSource?.Current));
+                        ApplyPolicies(platformBackend.Visibility.Current),
+                        platformBackend.PointerPosition?.Current));
+                    if (UsesHostedPresentation && platformBackend is IHostedWallpaperBackend hostedBackend)
+                    {
+                        var presentation = await ReadPresentationAsync(
+                            ipc,
+                            TimeSpan.FromSeconds(5),
+                            cancellationToken);
+                        await hostedBackend.PresentAsync(presentation, cancellationToken);
+                    }
                     Console.WriteLine($"Renderer connected to protocol {ProtocolVersion.Current}.");
 
-                    var updates = Channel.CreateUnbounded<HostMessage>(
-                        new UnboundedChannelOptions { SingleReader = true, SingleWriter = false });
+                    var updates = new RendererUpdateBuffer();
                     void OnVisibilityChanged(object? sender, VisibilityChanged state) =>
-                        updates.Writer.TryWrite(HostMessage.ForVisibility(ApplyPolicies(state)));
+                        updates.Write(HostMessage.ForVisibility(ApplyPolicies(state)));
                     void OnPointerPositionChanged(object? sender, PointerPositionChanged position) =>
-                        updates.Writer.TryWrite(HostMessage.ForPointerPosition(position));
+                        updates.Write(HostMessage.ForPointerPosition(position));
                     void OnAudioSpectrumChanged(object? sender, AudioSpectrumChanged spectrum) =>
-                        updates.Writer.TryWrite(HostMessage.ForAudioSpectrum(spectrum));
-                    visibilitySource.Changed += OnVisibilityChanged;
-                    if (pointerPositionSource is not null)
+                        updates.Write(HostMessage.ForAudioSpectrum(spectrum));
+                    platformBackend.Visibility.Changed += OnVisibilityChanged;
+                    if (platformBackend.PointerPosition is not null)
                     {
-                        pointerPositionSource.Changed += OnPointerPositionChanged;
+                        platformBackend.PointerPosition.Changed += OnPointerPositionChanged;
                     }
                     if (audioSpectrumSource is not null)
                     {
@@ -75,20 +82,19 @@ public sealed class RendererSupervisor(
                     }
                     try
                     {
-                        await ForwardUpdatesUntilExitAsync(renderer, ipc, updates.Reader, cancellationToken);
+                        await ForwardUpdatesUntilExitAsync(renderer, ipc, updates, cancellationToken);
                     }
                     finally
                     {
-                        visibilitySource.Changed -= OnVisibilityChanged;
-                        if (pointerPositionSource is not null)
+                        platformBackend.Visibility.Changed -= OnVisibilityChanged;
+                        if (platformBackend.PointerPosition is not null)
                         {
-                            pointerPositionSource.Changed -= OnPointerPositionChanged;
+                            platformBackend.PointerPosition.Changed -= OnPointerPositionChanged;
                         }
                         if (audioSpectrumSource is not null)
                         {
                             audioSpectrumSource.Changed -= OnAudioSpectrumChanged;
                         }
-                        updates.Writer.TryComplete();
                     }
                 }
                 catch (OperationCanceledException) when (!cancellationToken.IsCancellationRequested)
@@ -111,9 +117,25 @@ public sealed class RendererSupervisor(
                     var message = GetFallbackMessage(rendererErrors, renderer.ExitCode);
                     await Console.Error.WriteLineAsync(
                         $"Renderer failed {consecutiveFailures} times; showing fallback wallpaper: {message}");
-                    using var fallback = StartFallback(message);
+                    using var fallbackIpc = UsesHostedPresentation
+                        ? RendererIpcServer.Create()
+                        : null;
+                    using var fallback = StartFallback(message, fallbackIpc?.SocketPath);
                     try
                     {
+                        if (fallbackIpc is not null && platformBackend is IHostedWallpaperBackend hostedBackend)
+                        {
+                            await AcceptRendererAsync(fallbackIpc, TimeSpan.FromSeconds(5), token);
+                            await fallbackIpc.SendAsync(HostMessage.ForInitialState(
+                                ApplyPolicies(platformBackend.Visibility.Current),
+                                platformBackend.PointerPosition?.Current));
+                            var presentation = await ReadPresentationAsync(
+                                fallbackIpc,
+                                TimeSpan.FromSeconds(5),
+                                token);
+                            await hostedBackend.PresentAsync(presentation, token);
+                        }
+
                         await fallback.WaitForExitAsync(token);
                     }
                     catch (OperationCanceledException) when (cancellationToken.IsCancellationRequested)
@@ -155,6 +177,25 @@ public sealed class RendererSupervisor(
         await ipc.AcceptAsync(handshakeTimeout.Token);
     }
 
+    internal static async Task<Uri> ReadPresentationAsync(
+        RendererIpcServer ipc,
+        TimeSpan timeout,
+        CancellationToken cancellationToken)
+    {
+        using var presentationTimeout = CancellationTokenSource.CreateLinkedTokenSource(cancellationToken);
+        presentationTimeout.CancelAfter(timeout);
+        var message = await ipc.ReadAsync(presentationTimeout.Token);
+        if (message.Kind != RendererMessageKind.PresentationReady ||
+            !Uri.TryCreate(message.Source, UriKind.Absolute, out var source) ||
+            !source.IsLoopback ||
+            source.Scheme != Uri.UriSchemeHttp)
+        {
+            throw new InvalidDataException("The renderer sent an invalid presentation source.");
+        }
+
+        return source;
+    }
+
     private VisibilityChanged ApplyPolicies(VisibilityChanged visibility) => new(
         visibility.State,
         ShouldRender: !Matches(options.DisableRenderingWhen, visibility.State),
@@ -172,7 +213,7 @@ public sealed class RendererSupervisor(
     private static async Task ForwardUpdatesUntilExitAsync(
         Process renderer,
         RendererIpcServer ipc,
-        ChannelReader<HostMessage> updates,
+        RendererUpdateBuffer updates,
         CancellationToken cancellationToken)
     {
         var exitTask = renderer.WaitForExitAsync(cancellationToken);
@@ -206,6 +247,10 @@ public sealed class RendererSupervisor(
         startInfo.ArgumentList.Add(options.WallpaperDirectory);
         startInfo.ArgumentList.Add("--socket");
         startInfo.ArgumentList.Add(socketPath);
+        if (UsesHostedPresentation)
+        {
+            startInfo.ArgumentList.Add("--web-host");
+        }
 
         var process = new Process { StartInfo = startInfo };
         var capturedErrors = errors;
@@ -233,7 +278,7 @@ public sealed class RendererSupervisor(
         return process;
     }
 
-    private Process StartFallback(string message)
+    private Process StartFallback(string message, string? socketPath)
     {
         var startInfo = new ProcessStartInfo
         {
@@ -243,6 +288,12 @@ public sealed class RendererSupervisor(
         startInfo.ArgumentList.Add("--fallback");
         startInfo.ArgumentList.Add("--message");
         startInfo.ArgumentList.Add(message);
+        if (socketPath is not null)
+        {
+            startInfo.ArgumentList.Add("--socket");
+            startInfo.ArgumentList.Add(socketPath);
+            startInfo.ArgumentList.Add("--web-host");
+        }
         var process = new Process { StartInfo = startInfo };
         if (!process.Start())
         {

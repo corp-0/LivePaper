@@ -5,7 +5,7 @@ PartOf=graphical-session.target
 
 [Service]
 Type=simple
-ExecStart=%h/.local/lib/livepaper/current/LivePaper.Daemon --config %h/.config/livepaper/livepaper.toml
+ExecStart=%h/.local/lib/livepaper/current/LivePaper.Daemon --config %E/livepaper/livepaper.toml
 KillMode=mixed
 Restart=on-failure
 RestartSec=2

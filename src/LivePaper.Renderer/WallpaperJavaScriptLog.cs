@@ -22,7 +22,7 @@ internal sealed class WallpaperJavaScriptLog
         try
         {
             var runtimeDirectory = Environment.GetEnvironmentVariable("XDG_RUNTIME_DIR");
-            if (string.IsNullOrWhiteSpace(runtimeDirectory))
+            if (string.IsNullOrWhiteSpace(runtimeDirectory) || !Path.IsPathFullyQualified(runtimeDirectory))
             {
                 return null;
             }

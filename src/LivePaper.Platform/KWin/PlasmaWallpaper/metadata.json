@@ -1,0 +1,16 @@
+{
+    "KPackageStructure": "Plasma/Wallpaper",
+    "KPlugin": {
+        "Authors": [
+            {
+                "Name": "LivePaper contributors"
+            }
+        ],
+        "Description": "Displays the LivePaper renderer behind Plasma icons and widgets",
+        "Id": "io.github.livepaper.wallpaper",
+        "License": "MIT",
+        "Name": "LivePaper",
+        "Version": "1.0.0"
+    },
+    "X-KDE-ParentApp": "org.kde.plasmashell"
+}

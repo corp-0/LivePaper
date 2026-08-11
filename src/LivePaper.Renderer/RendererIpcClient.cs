@@ -8,11 +8,18 @@ public sealed class RendererIpcClient : IDisposable
 {
     private readonly Socket _socket;
     private readonly StreamReader _reader;
+    private readonly StreamWriter _writer;
 
     private RendererIpcClient(Socket socket)
     {
         _socket = socket;
-        _reader = new StreamReader(new NetworkStream(socket, ownsSocket: false), new UTF8Encoding(false));
+        var stream = new NetworkStream(socket, ownsSocket: false);
+        _reader = new StreamReader(stream, new UTF8Encoding(false), leaveOpen: true);
+        _writer = new StreamWriter(stream, new UTF8Encoding(false), leaveOpen: true)
+        {
+            AutoFlush = true,
+            NewLine = "\n"
+        };
     }
 
     public VisibilityChanged? InitialVisibility { get; set; }
@@ -49,6 +56,9 @@ public sealed class RendererIpcClient : IDisposable
         return message;
     }
 
+    public Task SendAsync(RendererMessage message) =>
+        _writer.WriteLineAsync(ProtocolJson.Serialize(message));
+
     public async Task ListenAsync(
         Action<VisibilityChanged> onVisibility,
         Action<PointerPositionChanged> onPointerPosition,
@@ -77,6 +87,7 @@ public sealed class RendererIpcClient : IDisposable
 
     public void Dispose()
     {
+        _writer.Dispose();
         _reader.Dispose();
         _socket.Dispose();
     }

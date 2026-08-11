@@ -1,17 +1,23 @@
 using LivePaper.Protocol;
 using Tmds.DBus.Protocol;
 
-namespace LivePaper.Platform;
+namespace LivePaper.Platform.KWin;
 
-public sealed class KWinPlatformBackend : IPlatformBackend, IVisibilitySource, IPointerPositionSource
+public sealed class KWinPlatformBackend :
+    IPlatformBackend,
+    IHostedWallpaperBackend,
+    IVisibilitySource,
+    IPointerPositionSource
 {
     private const string ServiceName = "io.github.livepaper.LivePaper";
     private const string ScriptName = "livepaper-visibility";
 
     private readonly DBusConnection _connection;
     private readonly KWinScriptingProxy _scripting;
+    private readonly PlasmaShellProxy _plasmaShell;
     private readonly string _scriptPath;
     private IDisposable? _showDesktopSubscription;
+    private bool _wallpaperActivated;
     private VisibilityState _coverageState = VisibilityState.Visible;
     private bool _showingDesktop;
     private PointerPositionChanged? _currentPointerPosition;
@@ -19,11 +25,13 @@ public sealed class KWinPlatformBackend : IPlatformBackend, IVisibilitySource, I
     private KWinPlatformBackend(
         DBusConnection connection,
         KWinScriptingProxy scripting,
+        PlasmaShellProxy plasmaShell,
         string scriptPath,
         bool showingDesktop)
     {
         _connection = connection;
         _scripting = scripting;
+        _plasmaShell = plasmaShell;
         _scriptPath = scriptPath;
         _showingDesktop = showingDesktop;
     }
@@ -49,11 +57,19 @@ public sealed class KWinPlatformBackend : IPlatformBackend, IVisibilitySource, I
         ShouldRender: true,
         ShouldMute: false);
 
+    public async Task PresentAsync(Uri source, CancellationToken cancellationToken = default)
+    {
+        cancellationToken.ThrowIfCancellationRequested();
+        await _plasmaShell.ShowWallpaperAsync(PlasmaWallpaperPackage.PluginId, source.AbsoluteUri);
+        _wallpaperActivated = true;
+    }
+
     public static async Task<IPlatformBackend> CreateAsync(
         TimeSpan pollInterval,
         bool trackPointerPosition)
     {
         var connection = new DBusConnection(DBusAddress.Session!);
+        string? scriptPath = null;
         try
         {
             await connection.ConnectAsync();
@@ -63,11 +79,18 @@ public sealed class KWinPlatformBackend : IPlatformBackend, IVisibilitySource, I
             connection.AddMethodHandler(handler);
 
             var scripting = new KWinScriptingProxy(connection);
+            var plasmaShell = new PlasmaShellProxy(connection);
             await scripting.UnloadScriptAsync(ScriptName);
 
-            var scriptPath = WriteScript(trackPointerPosition);
+            scriptPath = WriteScript(trackPointerPosition);
+            PlasmaWallpaperPackage.Install();
             var showingDesktop = await scripting.GetShowingDesktopAsync();
-            var source = new KWinPlatformBackend(connection, scripting, scriptPath, showingDesktop);
+            var source = new KWinPlatformBackend(
+                connection,
+                scripting,
+                plasmaShell,
+                scriptPath,
+                showingDesktop);
             source.PointerPosition = trackPointerPosition ? source : null;
             handler.Changed += source.OnVisibilityChanged;
             handler.PointerPositionChanged += source.OnPointerPositionChanged;
@@ -86,6 +109,10 @@ public sealed class KWinPlatformBackend : IPlatformBackend, IVisibilitySource, I
         catch
         {
             connection.Dispose();
+            if (scriptPath is not null && File.Exists(scriptPath))
+            {
+                File.Delete(scriptPath);
+            }
             throw;
         }
     }
@@ -93,6 +120,18 @@ public sealed class KWinPlatformBackend : IPlatformBackend, IVisibilitySource, I
     public async ValueTask DisposeAsync()
     {
         _showDesktopSubscription?.Dispose();
+
+        if (_wallpaperActivated)
+        {
+            try
+            {
+                await _plasmaShell.RestoreWallpapersAsync(PlasmaWallpaperPackage.PluginId);
+            }
+            catch (Exception exception)
+            {
+                Console.Error.WriteLine($"Could not restore the Plasma wallpaper: {exception.Message}");
+            }
+        }
 
         try
         {
@@ -112,8 +151,11 @@ public sealed class KWinPlatformBackend : IPlatformBackend, IVisibilitySource, I
 
     private static string WriteScript(bool trackPointerPosition)
     {
-        var runtimeDirectory = Environment.GetEnvironmentVariable("XDG_RUNTIME_DIR")
-            ?? throw new IOException("XDG_RUNTIME_DIR is not set.");
+        var runtimeDirectory = Environment.GetEnvironmentVariable("XDG_RUNTIME_DIR");
+        if (string.IsNullOrWhiteSpace(runtimeDirectory) || !Path.IsPathFullyQualified(runtimeDirectory))
+        {
+            throw new IOException("XDG_RUNTIME_DIR is not an absolute path.");
+        }
         var directory = Path.Combine(runtimeDirectory, "livepaper");
         Directory.CreateDirectory(directory);
         var scriptPath = Path.Combine(directory, $"kwin-visibility-{Guid.NewGuid():N}.js");
@@ -132,7 +174,7 @@ public sealed class KWinPlatformBackend : IPlatformBackend, IVisibilitySource, I
     private static string ReadScript(string fileName)
     {
         var assembly = typeof(KWinPlatformBackend).Assembly;
-        var resourceName = $"{typeof(KWinPlatformBackend).Namespace}.KWin.{fileName}";
+        var resourceName = $"{typeof(KWinPlatformBackend).Namespace}.{fileName}";
         using var stream = assembly.GetManifestResourceStream(resourceName)
             ?? throw new InvalidOperationException($"Embedded KWin script '{fileName}' is missing.");
         using var reader = new StreamReader(stream);
@@ -177,150 +219,5 @@ public sealed class KWinPlatformBackend : IPlatformBackend, IVisibilitySource, I
         Current = next;
         Console.WriteLine($"KWin visibility: {next.State}");
         Changed?.Invoke(this, next);
-    }
-}
-
-public class VisibilityMethodHandler(TimeSpan pollInterval) : IPathMethodHandler
-{
-    private const string Interface = "io.github.livepaper.Visibility";
-
-    public event EventHandler<string>? Changed;
-
-    public event Action<PointerPositionChanged>? PointerPositionChanged;
-
-    public string Path => "/Visibility";
-
-    public bool HandlesChildPaths => false;
-
-    public async ValueTask HandleMethodAsync(MethodContext context)
-    {
-        if (context.IsDBusIntrospectRequest)
-        {
-            context.ReplyIntrospectXml([InterfaceXml]);
-            return;
-        }
-
-        var request = context.Request;
-        if (request.InterfaceAsString == Interface &&
-            request.MemberAsString == "SetPointerPosition" &&
-            request.SignatureAsString == "ii")
-        {
-            var reader = request.GetBodyReader();
-            PointerPositionChanged?.Invoke(new(reader.ReadInt32(), reader.ReadInt32()));
-            using var writer = context.CreateReplyWriter("");
-            context.Reply(writer.CreateMessage());
-            return;
-        }
-
-        if (request.InterfaceAsString == Interface &&
-            request.MemberAsString == "SetVisibilityState" &&
-            request.SignatureAsString == "s")
-        {
-            var state = request.GetBodyReader().ReadString();
-            Changed?.Invoke(this, state);
-            using var writer = context.CreateReplyWriter("");
-            context.Reply(writer.CreateMessage());
-            return;
-        }
-
-        if (request.InterfaceAsString == Interface &&
-            request.MemberAsString == "NextPoll" &&
-            request.SignatureAsString == "")
-        {
-            await Task.Delay(pollInterval);
-            using var writer = context.CreateReplyWriter("");
-            context.Reply(writer.CreateMessage());
-            return;
-        }
-
-        context.ReplyUnknownMethodError();
-    }
-
-    private static ReadOnlyMemory<byte> InterfaceXml { get; } =
-        """
-        <interface name="io.github.livepaper.Visibility">
-          <method name="SetVisibilityState">
-            <arg direction="in" type="s"/>
-          </method>
-          <method name="NextPoll"/>
-          <method name="SetPointerPosition">
-            <arg direction="in" type="i"/>
-            <arg direction="in" type="i"/>
-          </method>
-        </interface>
-        """u8.ToArray();
-}
-
-public class KWinScriptingProxy(DBusConnection connection)
-{
-    private const string Destination = "org.kde.KWin";
-    private const string KWinPath = "/KWin";
-    private const string KWinInterface = "org.kde.KWin";
-    private const string Path = "/Scripting";
-    private const string Interface = "org.kde.kwin.Scripting";
-
-    public Task<bool> GetShowingDesktopAsync()
-    {
-        using var writer = connection.GetMessageWriter();
-        writer.WriteMethodCallHeader(
-            Destination,
-            KWinPath,
-            "org.freedesktop.DBus.Properties",
-            "Get",
-            "ss");
-        writer.WriteString(KWinInterface);
-        writer.WriteString("showingDesktop");
-        return connection.CallMethodAsync(
-            writer.CreateMessage(),
-            static (message, _) => message.GetBodyReader().ReadVariantValue().GetBool(),
-            readerState: null);
-    }
-
-    public ValueTask<IDisposable> WatchShowingDesktopAsync(Action<bool> changed) =>
-        connection.WatchSignalAsync(
-            Destination,
-            KWinPath,
-            KWinInterface,
-            "showingDesktopChanged",
-            static (message, _) => message.GetBodyReader().ReadBool(),
-            notification =>
-            {
-                if (notification.HasValue)
-                {
-                    changed(notification.Value);
-                }
-            },
-            ObserverFlags.None,
-            emitOnCapturedContext: false,
-            state: null);
-
-    public Task<int> LoadScriptAsync(string scriptPath, string pluginName)
-    {
-        using var writer = connection.GetMessageWriter();
-        writer.WriteMethodCallHeader(Destination, Path, Interface, "loadScript", "ss");
-        writer.WriteString(scriptPath);
-        writer.WriteString(pluginName);
-        return connection.CallMethodAsync(
-            writer.CreateMessage(),
-            static (message, _) => message.GetBodyReader().ReadInt32(),
-            readerState: null);
-    }
-
-    public Task StartAsync()
-    {
-        using var writer = connection.GetMessageWriter();
-        writer.WriteMethodCallHeader(Destination, Path, Interface, signature: null, member: "start");
-        return connection.CallMethodAsync(writer.CreateMessage());
-    }
-
-    public Task<bool> UnloadScriptAsync(string pluginName)
-    {
-        using var writer = connection.GetMessageWriter();
-        writer.WriteMethodCallHeader(Destination, Path, Interface, "unloadScript", "s");
-        writer.WriteString(pluginName);
-        return connection.CallMethodAsync(
-            writer.CreateMessage(),
-            static (message, _) => message.GetBodyReader().ReadBool(),
-            readerState: null);
     }
 }

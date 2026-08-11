@@ -6,6 +6,7 @@ interface BootstrapConfig {
   readonly visibility: Visibility;
   readonly pointerPosition: PointerPosition | null;
   readonly force2DTransforms: boolean;
+  readonly remoteEvents: boolean;
   readonly diagnostics: boolean;
 }
 
@@ -79,6 +80,8 @@ Object.defineProperty(window, "wallpaperRegisterAudioListener", {
   },
 });
 
+if (config.remoteEvents) installRemoteEvents();
+
 const nativeMediaPlay = HTMLMediaElement.prototype.play;
 HTMLMediaElement.prototype.play = function (...args): Promise<void> {
   mediaElements.add(this);
@@ -116,6 +119,27 @@ function applyProperties(properties: BootstrapConfig["properties"]): void {
     }
   };
   apply();
+}
+
+function installRemoteEvents(): void {
+  const events = new EventSource("/__livepaper/events");
+  events.addEventListener("message", event => {
+    const update = JSON.parse(event.data) as {
+      readonly type: "visibility" | "pointerPosition" | "audioSpectrum";
+      readonly value: Visibility | PointerPosition | number[];
+    };
+    switch (update.type) {
+      case "visibility":
+        livepaper._setVisibility(update.value as Visibility);
+        break;
+      case "pointerPosition":
+        livepaper._setPointerPosition(update.value as PointerPosition);
+        break;
+      case "audioSpectrum":
+        livepaper._setAudioSpectrum(update.value as number[]);
+        break;
+    }
+  });
 }
 
 function installFileUrlCompatibility(wallpaperRoot: string): void {

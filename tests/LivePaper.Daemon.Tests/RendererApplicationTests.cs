@@ -7,6 +7,51 @@ namespace LivePaper.Daemon.Tests;
 public class RendererApplicationTests
 {
     [Fact]
+    public void HostedFallbackEscapesRendererError()
+    {
+        string? path = null;
+        using (var directory = TemporaryWallpaperDirectory.CreateFallback("failed <script>alert(1)</script>"))
+        {
+            path = directory.Path;
+            var html = File.ReadAllText(Path.Combine(path, "index.html"));
+
+            Assert.Contains("failed &lt;script&gt;alert(1)&lt;/script&gt;", html);
+            Assert.DoesNotContain("failed <script>", html);
+        }
+
+        Assert.False(Directory.Exists(path));
+    }
+
+    [Fact]
+    public async Task HostedServerPublishesCurrentVisibility()
+    {
+        var root = Path.Combine(Path.GetTempPath(), $"livepaper-server-test-{Guid.NewGuid():N}");
+        Directory.CreateDirectory(root);
+        try
+        {
+            File.WriteAllText(Path.Combine(root, "index.html"), "<!doctype html>");
+            using var server = WallpaperHttpServer.Start(root, "index.html", remoteEvents: true);
+            server.DispatchVisibility(new VisibilityChanged(
+                VisibilityState.FullyCovered,
+                ShouldRender: false,
+                ShouldMute: true));
+            using var client = new HttpClient();
+
+            var json = await client.GetStringAsync(
+                new Uri(server.EntryUri, "/__livepaper/visibility"),
+                TestContext.Current.CancellationToken);
+
+            Assert.Contains("\"state\":\"FullyCovered\"", json);
+            Assert.Contains("\"shouldRender\":false", json);
+            Assert.Contains("\"shouldMute\":true", json);
+        }
+        finally
+        {
+            Directory.Delete(root, recursive: true);
+        }
+    }
+
+    [Fact]
     public void ResolvesWallpaperEngineFilePropertyInsideWallpaper()
     {
         var root = Path.Combine(Path.GetTempPath(), $"livepaper-renderer-test-{Guid.NewGuid():N}");

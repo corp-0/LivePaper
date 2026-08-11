@@ -1,48 +1,56 @@
 # Architecture
 
-LivePaper has one daemon and one renderer process per active output.
+LivePaper runs a daemon and one renderer for the active wallpaper.
 
-The daemon owns system-wide integrations, tracks outputs, and restarts failed renderers. A renderer owns exactly one direct Wayland layer-shell surface and one WPE WebKit view. Wallpaper code never runs in the daemon.
+The daemon picks the platform backend, watches the config and manifest, handles
+audio, and restarts the renderer when it fails. The renderer loads the wallpaper
+and owns its HTTP server. Wallpaper code never runs in the daemon.
 
-Both executables are published with .NET Native AOT. The initial distribution target is Linux x64 on the development machine's compositor and distribution. Native library loading and packaging are allowed to be target-specific; broader compositor and architecture support comes after the first backend works end to end.
+## Platform backends
 
-## Visibility and rendering
+Compositor code belongs in `LivePaper.Platform`:
 
-Keyboard focus is not a useful proxy for wallpaper visibility. The platform backend combines compositor-specific signals into a small state sent to each renderer:
+- `IPlatformBackend` reports visibility and, when available, pointer position.
+- `IHostedWallpaperBackend` lets a compositor embed the renderer's local URL.
+- A backend without hosted presentation uses the direct WPE layer-shell path.
 
-- `Visible`: render normally.
-- `PartiallyCovered`: reserved for backends that can report partial occlusion reliably.
-- `FullyCovered`: one or more windows collectively cover the whole output.
-- `OutputDisabled`: the monitor is no longer active.
-- `SessionLocked`: the desktop session is locked.
+KWin installs a Plasma wallpaper package and gives it the local URL. Plasma then
+keeps its icons and widgets above the wallpaper. Its D-Bus calls, scripts, QML,
+and cleanup code all live under `LivePaper.Platform/KWin`.
 
-Every update includes independent `shouldRender` and `shouldMute` decisions.
-The direct WPE renderer withholds frame completion while rendering is disabled,
-so pages do not need to cooperate. Muting applies to media elements without
-stopping visual rendering. Compositors may suppress frame callbacks for covered
-surfaces, but LivePaper does not treat that behavior as its only visibility
-signal.
+Another compositor can implement the same interfaces and register itself in
+`PlatformBackendFactory`. Do not add compositor checks to the daemon, renderer,
+protocol, or wallpaper API.
 
-The built-in KWin backend emits `Visible`, `PartiallyCovered`, and `FullyCovered`.
-Active fullscreen and fully maximized windows count as fully covered; other
-visible windows intersecting the output count as partial coverage. The daemon
-maps those states through the configured rendering and muting policies. Other
-platform backends can derive the same states using compositor-specific signals.
+Nothing should depend on a developer's output size, home directory, CPU
+architecture, or Linux distribution.
 
-The exact signal source belongs in `LivePaper.Platform`. It can differ between wlroots compositors and KDE without leaking compositor details into the protocol or wallpaper API.
+## Visibility
 
-## Audio reaction
+Backends report one of these states:
 
-Audio capture is exposed to the daemon through `IAudioSpectrumSource`. The
-built-in PipeWire implementation starts one temporary `pw-record` stream when
-the active wallpaper declares `audio_reaction`. The stream monitors the default
-output sink; it does not capture a microphone or write PipeWire configuration.
-LivePaper converts 48 kHz stereo PCM into 64 logarithmic spectrum bands per
-channel and sends the frames to the renderer. The capture process stops with
-the wallpaper or daemon. Other audio systems can implement the same source
-interface without changing the protocol or wallpaper API.
+- `Visible`
+- `PartiallyCovered`
+- `FullyCovered`
+- `OutputDisabled`
+- `SessionLocked`
 
-Imported web wallpapers receive the capability automatically when their HTML
-or JavaScript registers a Wallpaper Engine audio listener. A missing or failed
-`pw-record` process disables the built-in audio backend without stopping the
-renderer.
+The daemon applies the configured policy and sends `shouldRender` and
+`shouldMute` with every update. These are separate decisions.
+
+KWin treats fullscreen and fully maximized windows as fully covered. Other
+windows intersecting the output count as partial coverage. Other compositors
+can get the same states however they need to.
+
+Direct WPE stops completing frames when rendering is disabled. The Plasma host
+freezes Chromium instead. Both paths mute media separately.
+
+## Audio
+
+`IAudioSpectrumSource` is the audio backend boundary. The PipeWire backend runs
+`pw-record` only while the wallpaper needs audio data. It records the default
+output sink, converts it into 64 frequency bands per channel, and sends 128
+samples to the renderer.
+
+If `pw-record` is missing or fails, audio reaction is disabled. The wallpaper
+keeps running.

@@ -50,9 +50,7 @@ public sealed class RendererSupervisor(
 
                 try
                 {
-                    using var handshakeTimeout = CancellationTokenSource.CreateLinkedTokenSource(cancellationToken);
-                    handshakeTimeout.CancelAfter(TimeSpan.FromSeconds(5));
-                    await ipc.AcceptAsync(handshakeTimeout.Token);
+                    await AcceptRendererAsync(ipc, TimeSpan.FromSeconds(5), cancellationToken);
                     await ipc.SendAsync(HostMessage.ForInitialState(
                         ApplyPolicies(visibilitySource.Current),
                         pointerPositionSource?.Current));
@@ -77,7 +75,7 @@ public sealed class RendererSupervisor(
                     }
                     try
                     {
-                        await ForwardUpdatesUntilExitAsync(renderer, ipc, updates.Reader, handshakeTimeout.Token);
+                        await ForwardUpdatesUntilExitAsync(renderer, ipc, updates.Reader, cancellationToken);
                     }
                     finally
                     {
@@ -145,6 +143,16 @@ public sealed class RendererSupervisor(
 
             Console.WriteLine("LivePaper daemon stopped.");
         }
+    }
+
+    internal static async Task AcceptRendererAsync(
+        RendererIpcServer ipc,
+        TimeSpan timeout,
+        CancellationToken cancellationToken)
+    {
+        using var handshakeTimeout = CancellationTokenSource.CreateLinkedTokenSource(cancellationToken);
+        handshakeTimeout.CancelAfter(timeout);
+        await ipc.AcceptAsync(handshakeTimeout.Token);
     }
 
     private VisibilityChanged ApplyPolicies(VisibilityChanged visibility) => new(

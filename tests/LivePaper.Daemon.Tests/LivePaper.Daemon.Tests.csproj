@@ -9,5 +9,6 @@
   </ItemGroup>
   <ItemGroup>
     <ProjectReference Include="../../src/LivePaper.Daemon/LivePaper.Daemon.csproj" />
+    <ProjectReference Include="../../src/LivePaper.Renderer/LivePaper.Renderer.csproj" />
   </ItemGroup>
 </Project>

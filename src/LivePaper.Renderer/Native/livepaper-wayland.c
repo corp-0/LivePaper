@@ -127,6 +127,38 @@ static void registry_global(void *data, struct wl_registry *registry, uint32_t n
 static void registry_remove(void *data, struct wl_registry *registry, uint32_t name) { }
 static const struct wl_registry_listener registry_listener = { registry_global, registry_remove };
 
+struct lp_probe {
+    int compositor;
+    int layer_shell;
+};
+
+static void probe_global(void *data, struct wl_registry *registry, uint32_t name,
+    const char *interface, uint32_t version)
+{
+    struct lp_probe *probe = data;
+    if (!strcmp(interface, wl_compositor_interface.name))
+        probe->compositor = 1;
+    else if (!strcmp(interface, zwlr_layer_shell_v1_interface.name))
+        probe->layer_shell = 1;
+}
+
+static const struct wl_registry_listener probe_listener = { probe_global, registry_remove };
+
+int lp_probe_layer_shell(void)
+{
+    struct wl_display *display = wl_display_connect(NULL);
+    if (!display) return 0;
+
+    struct lp_probe probe = {0};
+    struct wl_registry *registry = wl_display_get_registry(display);
+    wl_registry_add_listener(registry, &probe_listener, &probe);
+    int supported = wl_display_roundtrip(display) >= 0 && probe.compositor && probe.layer_shell;
+
+    wl_registry_destroy(registry);
+    wl_display_disconnect(display);
+    return supported;
+}
+
 static void layer_configure(void *data, struct zwlr_layer_surface_v1 *surface,
     uint32_t serial, uint32_t width, uint32_t height)
 {

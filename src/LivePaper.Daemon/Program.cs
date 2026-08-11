@@ -5,6 +5,35 @@ using Tomlyn;
 
 try
 {
+    if (args.Contains("--doctor", StringComparer.Ordinal))
+    {
+        return WallpaperLibrary.Doctor(
+            ReadOption(args, "--wallpaper-library"),
+            ReadOption(args, "--config"));
+    }
+
+    var dependencyFixIndex = Array.IndexOf(args, "--dependency-fix");
+    if (dependencyFixIndex >= 0)
+    {
+        if (dependencyFixIndex + 1 >= args.Length)
+        {
+            throw new ArgumentException("--dependency-fix requires an installed wallpaper ID.");
+        }
+
+        var dependencyPaths = ReadOptions(args, "--dependency");
+        if (dependencyPaths.Length == 0)
+        {
+            throw new ArgumentException("--dependency-fix requires at least one --dependency directory.");
+        }
+
+        var fixedWallpaper = WallpaperLibrary.FixDependencies(
+            args[dependencyFixIndex + 1],
+            dependencyPaths,
+            ReadOption(args, "--wallpaper-library"));
+        Console.WriteLine($"Updated wallpaper dependencies: {fixedWallpaper}");
+        return 0;
+    }
+
     var importIndex = Array.IndexOf(args, "--import-wallpaper");
     if (importIndex >= 0)
     {
@@ -13,13 +42,9 @@ try
             throw new ArgumentException("--import-wallpaper requires a source directory.");
         }
 
-        var destinationIndex = Array.IndexOf(args, "--import-destination");
-        var destinationRoot = destinationIndex >= 0
-            ? destinationIndex + 1 < args.Length
-                ? args[destinationIndex + 1]
-                : throw new ArgumentException("--import-destination requires a directory.")
-            : null;
-        var imported = WallpaperImporter.Import(args[importIndex + 1], destinationRoot);
+        var destinationRoot = ReadOption(args, "--import-destination");
+        var dependencies = ReadOptions(args, "--dependency");
+        var imported = WallpaperImporter.Import(args[importIndex + 1], destinationRoot, dependencies);
         Console.WriteLine($"Imported wallpaper: {imported}");
         return 0;
     }
@@ -122,9 +147,47 @@ try
 
     return 0;
 }
+
 catch (Exception exception) when (
     exception is ArgumentException or IOException or InvalidDataException or TomlException or PlatformNotSupportedException)
 {
-    Console.Error.WriteLine($"Cannot start LivePaper: {exception.Message}");
+    Console.Error.WriteLine($"LivePaper failed: {exception.Message}");
     return 1;
+}
+
+static string[] ReadOptions(string[] arguments, string name)
+{
+    var values = new List<string>();
+    for (var index = 0; index < arguments.Length; index++)
+    {
+        if (!string.Equals(arguments[index], name, StringComparison.Ordinal))
+        {
+            continue;
+        }
+
+        if (++index >= arguments.Length)
+        {
+            throw new ArgumentException($"{name} requires a directory.");
+        }
+
+        values.Add(arguments[index]);
+    }
+
+    return [.. values];
+}
+
+static string? ReadOption(string[] arguments, string name)
+{
+    var index = Array.IndexOf(arguments, name);
+    if (index < 0)
+    {
+        return null;
+    }
+
+    if (index + 1 >= arguments.Length)
+    {
+        throw new ArgumentException($"{name} requires a value.");
+    }
+
+    return arguments[index + 1];
 }

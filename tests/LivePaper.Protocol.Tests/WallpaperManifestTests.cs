@@ -34,6 +34,7 @@ public class WallpaperManifestTests
 
             [wallpaper_engine]
             force_2d_transforms = true
+            file_properties = ["background_image"]
 
             [wallpaper_engine.properties]
             targetfps = 60
@@ -42,6 +43,7 @@ public class WallpaperManifestTests
 
         Assert.NotNull(manifest.WallpaperEngine);
         Assert.True(manifest.WallpaperEngine.Force2DTransforms);
+        Assert.Equal(["background_image"], manifest.WallpaperEngine.FileProperties);
         Assert.True(manifest.WallpaperEngine.Properties["targetfps"] is long or int);
         Assert.Equal(true, manifest.WallpaperEngine.Properties["audio"]);
     }

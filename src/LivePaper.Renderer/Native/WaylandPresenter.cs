@@ -38,6 +38,8 @@ public sealed unsafe partial class WaylandPresenter : IDisposable
 
     public bool PresentFallback(string message) => PresentFallback(_handle, message);
 
+    public static bool SupportsLayerShell() => ProbeLayerShell();
+
     [UnmanagedCallersOnly]
     private static int OnWaylandReady(int fd, int condition, nint data)
     {
@@ -55,6 +57,10 @@ public sealed unsafe partial class WaylandPresenter : IDisposable
 
     [LibraryImport(Library, EntryPoint = "lp_presenter_create")]
     private static partial nint Create(uint width, uint height, int interactive);
+
+    [LibraryImport(Library, EntryPoint = "lp_probe_layer_shell")]
+    [return: MarshalAs(UnmanagedType.Bool)]
+    private static partial bool ProbeLayerShell();
 
     [LibraryImport(Library, EntryPoint = "lp_presenter_set_input_callback")]
     private static partial void SetInputCallback(
@@ -102,7 +108,6 @@ public sealed unsafe partial class WaylandPresenter : IDisposable
             _source = 0;
         }
 
-        // Native Wayland and WPE callbacks can still be queued during exit.
-        // This one-view process lets the OS reclaim their final objects.
+        // Native callbacks may still be queued, so teardown waits for this one-view process to exit.
     }
 }

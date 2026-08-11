@@ -13,6 +13,7 @@ public sealed class WallpaperHttpServer : IDisposable
     private readonly string _entryPath;
     private readonly TcpListener _listener;
     private readonly bool _logRequests;
+    private readonly Action<string, string>? _onConsoleMessage;
     private readonly CancellationTokenSource _shutdown = new();
     private readonly Task _serverTask;
     private readonly byte[] _bootstrapConfig;
@@ -25,12 +26,15 @@ public sealed class WallpaperHttpServer : IDisposable
         string? bootstrapPropertiesJson,
         VisibilityChanged? bootstrapVisibility,
         PointerPositionChanged? bootstrapPointerPosition,
-        bool force2DTransforms)
+        bool force2DTransforms,
+        Action<string, string>? onConsoleMessage)
     {
         _root = root;
         _entryPath = Path.GetFullPath(entry, root);
         _logRequests = logRequests;
+        _onConsoleMessage = onConsoleMessage;
         _bootstrapConfig = BuildBootstrapConfig(
+            root,
             bootstrapPropertiesJson,
             bootstrapVisibility,
             bootstrapPointerPosition,
@@ -52,8 +56,9 @@ public sealed class WallpaperHttpServer : IDisposable
         string? bootstrapPropertiesJson = null,
         VisibilityChanged? bootstrapVisibility = null,
         PointerPositionChanged? bootstrapPointerPosition = null,
-        bool force2DTransforms = false) =>
-        new(root, entry, logRequests, bootstrapPropertiesJson, bootstrapVisibility, bootstrapPointerPosition, force2DTransforms);
+        bool force2DTransforms = false,
+        Action<string, string>? onConsoleMessage = null) =>
+        new(root, entry, logRequests, bootstrapPropertiesJson, bootstrapVisibility, bootstrapPointerPosition, force2DTransforms, onConsoleMessage);
 
     public void Dispose()
     {
@@ -135,6 +140,19 @@ public sealed class WallpaperHttpServer : IDisposable
                     return;
                 }
 
+                if (requestPath == "/__livepaper/console")
+                {
+                    var level = GetQueryParameter(requestUri.Query, "level") ?? "log";
+                    var message = GetQueryParameter(requestUri.Query, "message") ?? string.Empty;
+                    _onConsoleMessage?.Invoke(level, message);
+                    if (_logRequests)
+                    {
+                        Console.WriteLine($"Wallpaper JS {level}: {message}");
+                    }
+                    await WriteStatusAsync(stream, 204, "No Content", cancellationToken);
+                    return;
+                }
+
                 if (requestPath == "/__livepaper/host.js")
                 {
                     await SendBytesAsync(
@@ -160,8 +178,19 @@ public sealed class WallpaperHttpServer : IDisposable
                 var relativePath = Uri.UnescapeDataString(requestPath).TrimStart('/');
                 var filePath = Path.GetFullPath(relativePath.Replace('/', Path.DirectorySeparatorChar), _root);
                 var relative = Path.GetRelativePath(_root, filePath);
-                if (relative == ".." || relative.StartsWith($"..{Path.DirectorySeparatorChar}", StringComparison.Ordinal) ||
-                    !File.Exists(filePath))
+                if (relative == ".." || relative.StartsWith($"..{Path.DirectorySeparatorChar}", StringComparison.Ordinal))
+                {
+                    await Console.Error.WriteLineAsync($"Wallpaper HTTP 404: {requestPath}");
+                    await WriteStatusAsync(stream, 404, "Not Found", cancellationToken);
+                    return;
+                }
+
+                if (!File.Exists(filePath))
+                {
+                    filePath = FindBundledAsset(relativePath) ?? filePath;
+                }
+
+                if (!File.Exists(filePath))
                 {
                     await Console.Error.WriteLineAsync($"Wallpaper HTTP 404: {requestPath}");
                     await WriteStatusAsync(stream, 404, "Not Found", cancellationToken);
@@ -189,6 +218,47 @@ public sealed class WallpaperHttpServer : IDisposable
             {
             }
         }
+    }
+
+    private string? FindBundledAsset(string relativePath)
+    {
+        var normalized = relativePath.Replace('/', Path.DirectorySeparatorChar);
+        var releaseSuffix = $"{Path.DirectorySeparatorChar}release{Path.DirectorySeparatorChar}{normalized}";
+        string? match = null;
+        foreach (var candidate in Directory.EnumerateFiles(
+                     _root,
+                     Path.GetFileName(normalized),
+                     SearchOption.AllDirectories))
+        {
+            if (!candidate.EndsWith(releaseSuffix, StringComparison.Ordinal))
+            {
+                continue;
+            }
+
+            if (match is not null)
+            {
+                return null;
+            }
+
+            match = candidate;
+        }
+
+        return match;
+    }
+
+    private static string? GetQueryParameter(string query, string name)
+    {
+        foreach (var part in query.TrimStart('?').Split('&', StringSplitOptions.RemoveEmptyEntries))
+        {
+            var equals = part.IndexOf('=');
+            var key = equals < 0 ? part : part[..equals];
+            if (string.Equals(Uri.UnescapeDataString(key), name, StringComparison.Ordinal))
+            {
+                return Uri.UnescapeDataString(equals < 0 ? string.Empty : part[(equals + 1)..]);
+            }
+        }
+
+        return null;
     }
 
     private static async Task SendEntryWithBootstrapAsync(
@@ -229,6 +299,7 @@ public sealed class WallpaperHttpServer : IDisposable
     }
 
     private static byte[] BuildBootstrapConfig(
+        string root,
         string? propertiesJson,
         VisibilityChanged? visibility,
         PointerPositionChanged? pointerPosition,
@@ -238,6 +309,7 @@ public sealed class WallpaperHttpServer : IDisposable
         using var stream = new MemoryStream();
         using var writer = new Utf8JsonWriter(stream);
         writer.WriteStartObject();
+        writer.WriteString("wallpaperRoot", Path.GetFullPath(root).Replace('\\', '/'));
         writer.WritePropertyName("properties");
         writer.WriteRawValue(propertiesJson ?? "null");
         writer.WritePropertyName("visibility");

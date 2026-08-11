@@ -11,12 +11,6 @@ release_id=$(date -u +%Y%m%d%H%M%S)
 release_dir="$install_root/releases/$release_id"
 staging_dir=$(mktemp -d /tmp/livepaper-install.XXXXXX)
 
-if command -v pw-record >/dev/null 2>&1; then
-    echo "Audio reaction backend: PipeWire"
-else
-    echo "Warning: the built-in PipeWire audio backend is unavailable because pw-record was not found." >&2
-fi
-
 cleanup() {
     rm -rf -- "$staging_dir"
 }

@@ -53,16 +53,7 @@ public sealed record DaemonOptions(
             throw new InvalidDataException("wallpaper.id must be one installed wallpaper ID.");
         }
 
-        var dataHome = Environment.GetEnvironmentVariable("XDG_DATA_HOME");
-        if (string.IsNullOrWhiteSpace(dataHome))
-        {
-            dataHome = Path.Combine(
-                Environment.GetFolderPath(Environment.SpecialFolder.UserProfile),
-                ".local",
-                "share");
-        }
-
-        var library = Path.Combine(dataHome, "livepaper", "wallpapers");
+        var library = WallpaperLibrary.GetDefaultRoot();
         if (!Directory.Exists(library))
         {
             throw new DirectoryNotFoundException($"The wallpaper library does not exist: {library}");

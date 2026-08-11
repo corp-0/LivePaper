@@ -11,6 +11,13 @@ public static class RendererApplication
 {
     public static int Run(string[] args)
     {
+        if (args.Contains("--check-dependencies", StringComparer.Ordinal))
+        {
+            RendererDependencyCheck.Run();
+            Console.WriteLine("WPE WebKit, WPE FDO, Wayland, EGL, and GLES are available.");
+            return 0;
+        }
+
         if (args.Contains("--fallback", StringComparer.Ordinal))
         {
             return RunFallback(args);
@@ -23,7 +30,11 @@ public static class RendererApplication
 
         if (args.Contains("--probe", StringComparer.Ordinal))
         {
-            using var presenter = new WaylandPresenter(1, 1, interactive: false);
+            if (!WaylandPresenter.SupportsLayerShell())
+            {
+                throw new InvalidOperationException("The compositor does not advertise wlr-layer-shell.");
+            }
+
             Console.WriteLine("The compositor supports the direct Wayland layer-shell presenter.");
             return 0;
         }
@@ -61,6 +72,7 @@ public static class RendererApplication
         using var ipc = ConnectToDaemon(args);
         var initialVisibility = ipc?.InitialVisibility
             ?? new VisibilityChanged(VisibilityState.Visible, ShouldRender: true, ShouldMute: false);
+        var javaScriptLog = WallpaperJavaScriptLog.TryCreate(wallpaper.Manifest.Id);
         using var wallpaperServer = WallpaperHttpServer.Start(
             wallpaper.Directory,
             wallpaper.Manifest.Entry,
@@ -68,7 +80,8 @@ public static class RendererApplication
             wallpaper.InitialPropertiesJson,
             initialVisibility,
             ipc?.InitialPointerPosition,
-            wallpaper.Manifest.WallpaperEngine?.Force2DTransforms is true);
+            wallpaper.Manifest.WallpaperEngine?.Force2DTransforms is true,
+            javaScriptLog is null ? null : javaScriptLog.Write);
         var interactive = wallpaper.Manifest.HasCapability(WallpaperCapabilities.PointerInput);
         using var renderer = new WpeDirectRenderer(width, height, diagnosticsEnabled, interactive);
         renderer.Load(wallpaperServer.EntryUri.AbsoluteUri);
@@ -191,7 +204,7 @@ public static class RendererApplication
         }
 
         var manifest = WallpaperManifest.Load(File.ReadAllText(manifestPath));
-        var initialPropertiesJson = SerializeInitialProperties(manifest, args);
+        var initialPropertiesJson = SerializeInitialProperties(wallpaperDirectory, manifest, args);
         var entryPath = Path.GetFullPath(manifest.Entry, wallpaperDirectory);
         var relativeEntry = Path.GetRelativePath(wallpaperDirectory, entryPath);
 
@@ -231,7 +244,10 @@ public static class RendererApplication
         }
     }
 
-    private static string? SerializeInitialProperties(WallpaperManifest manifest, string[] args)
+    private static string? SerializeInitialProperties(
+        string wallpaperDirectory,
+        WallpaperManifest manifest,
+        string[] args)
     {
         var properties = new Dictionary<string, object>(StringComparer.Ordinal);
         foreach (var (name, value) in manifest.Properties)
@@ -270,7 +286,13 @@ public static class RendererApplication
                 }
                 else
                 {
-                    WritePropertyValue(writer, property.Value);
+                    WritePropertyValue(
+                        writer,
+                        ResolveWallpaperEnginePropertyValue(
+                            wallpaperDirectory,
+                            manifest.WallpaperEngine,
+                            property.Key,
+                            property.Value));
                 }
                 writer.WriteEndObject();
             }
@@ -279,6 +301,36 @@ public static class RendererApplication
         }
 
         return Encoding.UTF8.GetString(stream.ToArray());
+    }
+
+    public static object ResolveWallpaperEnginePropertyValue(
+        string wallpaperDirectory,
+        WallpaperEngineCompatibility? compatibility,
+        string propertyName,
+        object value)
+    {
+        if (value is not string path || string.IsNullOrWhiteSpace(path) ||
+            compatibility?.FileProperties.Contains(propertyName, StringComparer.Ordinal) is not true)
+        {
+            return value;
+        }
+
+        var resolved = Path.GetFullPath(path, wallpaperDirectory);
+        var relative = Path.GetRelativePath(wallpaperDirectory, resolved);
+        if (relative == ".." || relative.StartsWith($"..{Path.DirectorySeparatorChar}", StringComparison.Ordinal))
+        {
+            throw new InvalidDataException(
+                $"Wallpaper Engine file property '{propertyName}' must stay inside the wallpaper directory.");
+        }
+
+        if (!File.Exists(resolved) && !Directory.Exists(resolved))
+        {
+            throw new FileNotFoundException(
+                $"Wallpaper Engine file property '{propertyName}' does not exist.",
+                resolved);
+        }
+
+        return resolved;
     }
 
     private static void WritePropertyValue(Utf8JsonWriter writer, object value)

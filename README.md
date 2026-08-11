@@ -74,6 +74,8 @@ livepaper status
 livepaper logs
 livepaper restart
 livepaper import /path/to/workshop/project
+livepaper doctor
+livepaper dep-fix wallpaper-engine.example --dependency /path/to/workshop/dependency
 ```
 
 Run `./scripts/uninstall-user.sh` to remove the binaries and service. It keeps
@@ -142,6 +144,26 @@ dotnet run --project src/LivePaper.Daemon -- \
 
 You can use `--import-destination` to pick another wallpaper library. LivePaper
 won't overwrite a wallpaper you already imported.
+
+If a web wallpaper loads files from another Workshop item, pass that item's
+directory with `--dependency`. LivePaper copies it into the import under its
+Workshop directory ID:
+
+```sh
+dotnet run --project src/LivePaper.Daemon -- \
+  --import-wallpaper /path/to/steamapps/workshop/content/431960/1234567890 \
+  --dependency /path/to/steamapps/workshop/content/431960/9876543210
+```
+
+Run `livepaper doctor` to check rendering libraries, layer-shell support,
+PipeWire, installed manifests, entry files, and dependencies. To add a missed
+dependency, pass the installed wallpaper ID and the dependency's Workshop
+directory:
+
+```sh
+livepaper dep-fix wallpaper-engine.kei \
+  --dependency /path/to/steamapps/workshop/content/431960/9876543210
+```
 
 The daemon takes care of starting the renderer, restarting it if it crashes,
 and stopping it when the daemon exits:

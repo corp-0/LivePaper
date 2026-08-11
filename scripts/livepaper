@@ -12,11 +12,21 @@ case "$command_name" in
         exec "$libexec/LivePaper.Daemon" --config "$config" "$@"
         ;;
     import)
-        if [[ $# -ne 1 ]]; then
-            echo "usage: livepaper import WALLPAPER_ENGINE_DIRECTORY" >&2
+        if [[ $# -lt 1 ]]; then
+            echo "usage: livepaper import WALLPAPER_ENGINE_DIRECTORY [--dependency DIRECTORY]..." >&2
             exit 2
         fi
-        exec "$libexec/LivePaper.Daemon" --import-wallpaper "$1"
+        exec "$libexec/LivePaper.Daemon" --import-wallpaper "$@"
+        ;;
+    doctor)
+        exec "$libexec/LivePaper.Daemon" --doctor --config "$config" "$@"
+        ;;
+    dep-fix)
+        if [[ $# -lt 3 ]]; then
+            echo "usage: livepaper dep-fix WALLPAPER_ID --dependency DIRECTORY [--dependency DIRECTORY]..." >&2
+            exit 2
+        fi
+        exec "$libexec/LivePaper.Daemon" --dependency-fix "$@"
         ;;
     start|stop|restart|status)
         exec systemctl --user "$command_name" livepaper.service
@@ -25,7 +35,7 @@ case "$command_name" in
         exec journalctl --user -u livepaper.service -f
         ;;
     *)
-        echo "usage: livepaper {run|import|start|stop|restart|status|logs}" >&2
+        echo "usage: livepaper {run|import|doctor|dep-fix|start|stop|restart|status|logs}" >&2
         exit 2
         ;;
 esac

@@ -70,6 +70,18 @@ public class WallpaperManifest
 
 public class WallpaperEngineCompatibility
 {
+    [JsonPropertyName("workshop_id")]
+    public string? WorkshopId { get; init; }
+
+    [JsonPropertyName("dependencies")]
+    public string[] Dependencies { get; init; } = [];
+
+    [JsonPropertyName("base_dependency")]
+    public string? BaseDependency { get; init; }
+
+    [JsonPropertyName("file_properties")]
+    public string[] FileProperties { get; init; } = [];
+
     [JsonPropertyName("force_2d_transforms")]
     public bool Force2DTransforms { get; init; }
 

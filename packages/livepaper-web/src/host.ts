@@ -1,6 +1,7 @@
 import type { AudioSpectrum, LivePaper, PointerPosition, Visibility } from "./index.js";
 
 interface BootstrapConfig {
+  readonly wallpaperRoot: string;
   readonly properties: Record<string, { readonly value: unknown }> | null;
   readonly visibility: Visibility;
   readonly pointerPosition: PointerPosition | null;
@@ -24,6 +25,8 @@ declare global {
 }
 
 const config = loadConfig();
+installConsoleDiagnostics();
+installFileUrlCompatibility(config.wallpaperRoot);
 installTransformCompatibility(config.force2DTransforms);
 
 let visibility = Object.freeze(config.visibility);
@@ -39,8 +42,8 @@ Object.defineProperties(livepaper, {
   audioSpectrum: { get: () => audioSpectrum, enumerable: true },
   _setAudioSpectrum: {
     value: (next: number[]) => {
-      audioSpectrum = Object.freeze(next);
-      audioListener?.(audioSpectrum);
+      audioSpectrum = next;
+      audioListener?.(next);
       livepaper.dispatchEvent(new CustomEvent("audiospectrumchange", { detail: audioSpectrum }));
     },
   },
@@ -113,6 +116,65 @@ function applyProperties(properties: BootstrapConfig["properties"]): void {
     }
   };
   apply();
+}
+
+function installFileUrlCompatibility(wallpaperRoot: string): void {
+  const root = wallpaperRoot.replace(/\\/g, "/").replace(/\/+$/, "");
+  const translate = (value: string): string => {
+    if (!value.toLowerCase().startsWith("file:")) return value;
+    let path: string;
+    try {
+      path = decodeURIComponent(new URL(value).pathname).replace(/^\/+/, "/");
+    } catch {
+      return value;
+    }
+    if (path !== root && !path.startsWith(`${root}/`)) return value;
+    const relative = path.slice(root.length).replace(/^\/+/, "");
+    const encoded = relative.split("/").map(encodeURIComponent).join("/");
+    return new URL(`/${encoded}`, window.location.origin).href;
+  };
+  const translateCss = (value: string): string => value.replace(
+    /url\(\s*(["']?)(.*?)\1\s*\)/gi,
+    (_match, quote: string, url: string) => `url(${quote}${translate(url)}${quote})`,
+  );
+  const patchUrlProperty = (prototype: object, property: string): void => {
+    const descriptor = Object.getOwnPropertyDescriptor(prototype, property);
+    if (!descriptor?.set) return;
+    Object.defineProperty(prototype, property, {
+      ...descriptor,
+      set(value: string) { descriptor.set?.call(this, translate(value)); },
+    });
+  };
+  for (const [prototype, properties] of [
+    [HTMLImageElement.prototype, ["src"]],
+    [HTMLMediaElement.prototype, ["src", "poster"]],
+    [HTMLSourceElement.prototype, ["src"]],
+  ] as const) {
+    for (const property of properties) patchUrlProperty(prototype, property);
+  }
+
+  const nativeSetAttribute = Element.prototype.setAttribute;
+  Element.prototype.setAttribute = function (name, value): void {
+    nativeSetAttribute.call(
+      this,
+      name,
+      name.toLowerCase() === "src" || name.toLowerCase() === "poster" ? translate(value) : value,
+    );
+  };
+
+  const style = CSSStyleDeclaration.prototype;
+  for (const property of ["background", "backgroundImage"] as const) {
+    const descriptor = Object.getOwnPropertyDescriptor(style, property);
+    if (!descriptor?.set) continue;
+    Object.defineProperty(style, property, {
+      ...descriptor,
+      set(value: string) { descriptor.set?.call(this, translateCss(value)); },
+    });
+  }
+  const nativeSetProperty = style.setProperty;
+  style.setProperty = function (property, value, priority): void {
+    nativeSetProperty.call(this, property, value === null ? "" : translateCss(value), priority);
+  };
 }
 
 function installTransformCompatibility(enabled: boolean): void {
@@ -199,6 +261,30 @@ function installDiagnostics(host: LivePaper): void {
     };
     void fetch(`/__livepaper_benchmark_report?${encodeURIComponent(JSON.stringify(report))}`);
   }, 10_000);
+}
+
+function installConsoleDiagnostics(): void {
+  const send = (level: string, values: unknown[]): void => {
+    const message = values.map(value => {
+      if (typeof value === "string") return value;
+      try { return JSON.stringify(value); } catch { return String(value); }
+    }).join(" ");
+    void fetch(`/__livepaper/console?level=${encodeURIComponent(level)}&message=${encodeURIComponent(message)}`)
+      .catch(() => undefined);
+  };
+  for (const level of ["debug", "log", "info", "warn", "error"] as const) {
+    const native = console[level].bind(console);
+    console[level] = (...values: unknown[]): void => {
+      native(...values);
+      send(level, values);
+    };
+  }
+  window.addEventListener("error", event => {
+    send("error", [`${event.message} (${event.filename}:${event.lineno}:${event.colno})`]);
+  });
+  window.addEventListener("unhandledrejection", event => {
+    send("error", ["Unhandled promise rejection:", event.reason]);
+  });
 }
 
 function mediaState(element: HTMLMediaElement): object {

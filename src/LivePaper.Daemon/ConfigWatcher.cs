@@ -11,17 +11,22 @@ public sealed class FileChangeWatcher : IDisposable
 
     public FileChangeWatcher(string path)
     {
+        if (File.Exists(path))
+        {
+            path = File.ResolveLinkTarget(path, returnFinalTarget: true)?.FullName ?? path;
+        }
+
         _watcher = new FileSystemWatcher(
             Path.GetDirectoryName(path)!,
             Path.GetFileName(path))
         {
-            NotifyFilter = NotifyFilters.FileName | NotifyFilters.LastWrite | NotifyFilters.Size,
-            EnableRaisingEvents = true
+            NotifyFilter = NotifyFilters.FileName | NotifyFilters.LastWrite | NotifyFilters.Size
         };
         _watcher.Changed += OnChanged;
         _watcher.Created += OnChanged;
         _watcher.Deleted += OnChanged;
         _watcher.Renamed += OnRenamed;
+        _watcher.EnableRaisingEvents = true;
     }
 
     public ValueTask<bool> WaitForChangeAsync(CancellationToken cancellationToken) =>

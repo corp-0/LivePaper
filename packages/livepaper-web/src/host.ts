@@ -3,6 +3,7 @@ import type { AudioSpectrum, LivePaper, PointerPosition, Visibility } from "./in
 interface BootstrapConfig {
   readonly wallpaperRoot: string;
   readonly properties: Record<string, { readonly value: unknown }> | null;
+  readonly directoryFiles: Record<string, readonly string[]>;
   readonly visibility: Visibility;
   readonly pointerPosition: PointerPosition | null;
   readonly force2DTransforms: boolean;
@@ -22,6 +23,10 @@ declare global {
       applyUserProperties?(properties: Record<string, { readonly value: unknown }>): void;
     };
     wallpaperRegisterAudioListener?(listener: (samples: AudioSpectrum) => void): void;
+    wallpaperRequestRandomFileForProperty?(
+      propertyName: string,
+      callback: (propertyName: string, filePath: string) => void,
+    ): void;
   }
 }
 
@@ -81,6 +86,14 @@ Object.defineProperty(window, "wallpaperRegisterAudioListener", {
 });
 
 if (config.remoteEvents) installRemoteEvents();
+
+Object.defineProperty(window, "wallpaperRequestRandomFileForProperty", {
+  value: (propertyName: string, callback: (propertyName: string, filePath: string) => void) => {
+    const files = Object.hasOwn(config.directoryFiles, propertyName) ? config.directoryFiles[propertyName]! : [];
+    const file = files[Math.floor(Math.random() * files.length)] ?? "";
+    window.setTimeout(() => callback(propertyName, file), 0);
+  },
+});
 
 const nativeMediaPlay = HTMLMediaElement.prototype.play;
 HTMLMediaElement.prototype.play = function (...args): Promise<void> {

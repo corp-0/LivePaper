@@ -410,9 +410,10 @@ public static class RendererApplication
 
         if (!File.Exists(resolved) && !Directory.Exists(resolved))
         {
-            throw new FileNotFoundException(
-                $"Wallpaper Engine file property '{propertyName}' does not exist.",
-                resolved);
+            // Presets can retain missing files for modes that are not selected.
+            Console.Error.WriteLine(
+                $"Warning: Wallpaper Engine file property '{propertyName}' references a missing file or directory: {resolved}. " +
+                "Continuing with this path. Features that use it may not work.");
         }
 
         return resolved;

@@ -366,6 +366,41 @@ public sealed class WallpaperHttpServer : IDisposable
         writer.WriteString("wallpaperRoot", Path.GetFullPath(root).Replace('\\', '/'));
         writer.WritePropertyName("properties");
         writer.WriteRawValue(propertiesJson ?? "null");
+        writer.WritePropertyName("directoryFiles");
+        writer.WriteStartObject();
+        using (var properties = JsonDocument.Parse(propertiesJson ?? "null"))
+        {
+            if (properties.RootElement.ValueKind == JsonValueKind.Object)
+            {
+                foreach (var property in properties.RootElement.EnumerateObject())
+                {
+                    if (!property.Value.TryGetProperty("value", out var value) ||
+                        value.ValueKind != JsonValueKind.String ||
+                        value.GetString() is not { } directory ||
+                        !Path.IsPathFullyQualified(directory))
+                    {
+                        continue;
+                    }
+
+                    var path = Path.GetFullPath(directory);
+                    var relative = Path.GetRelativePath(root, path);
+                    if (relative == ".." || relative.StartsWith($"..{Path.DirectorySeparatorChar}", StringComparison.Ordinal) ||
+                        !Directory.Exists(path))
+                    {
+                        continue;
+                    }
+
+                    writer.WritePropertyName(property.Name);
+                    writer.WriteStartArray();
+                    foreach (var file in Directory.EnumerateFiles(path))
+                    {
+                        writer.WriteStringValue(file);
+                    }
+                    writer.WriteEndArray();
+                }
+            }
+        }
+        writer.WriteEndObject();
         writer.WritePropertyName("visibility");
         writer.WriteStartObject();
         writer.WriteString("state", (visibility?.State ?? VisibilityState.Visible).ToString());

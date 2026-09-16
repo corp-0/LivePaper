@@ -104,6 +104,60 @@ public class RendererApplicationTests
     }
 
     [Fact]
+    public void MissingWallpaperEngineFilePropertyPreservesResolvedPath()
+    {
+        var root = Directory.CreateTempSubdirectory("livepaper-missing-file-");
+        try
+        {
+            var compatibility = new WallpaperEngineCompatibility { FileProperties = ["background_image"] };
+
+            Assert.Equal(Path.Combine(root.FullName, "files", "missing.jpg"), RendererApplication.ResolveWallpaperEnginePropertyValue(
+                root.FullName, compatibility, "background_image", "files/missing.jpg"));
+            Assert.Equal("files/missing.jpg", RendererApplication.ResolveWallpaperEnginePropertyValue(
+                root.FullName, compatibility, "text", "files/missing.jpg"));
+        }
+        finally
+        {
+            root.Delete(recursive: true);
+        }
+    }
+
+    [Fact]
+    public async Task HostedConfigIncludesBundledSlideshowFiles()
+    {
+        var root = Directory.CreateTempSubdirectory("livepaper-slideshow-");
+        try
+        {
+            var wallpaper = Directory.CreateDirectory(Path.Combine(root.FullName, "wallpaper"));
+            var slides = Directory.CreateDirectory(Path.Combine(wallpaper.FullName, "directories", "slides"));
+            var image = Path.Combine(slides.FullName, "slide 1.jpg");
+            File.WriteAllText(image, "image");
+            Directory.CreateDirectory(Path.Combine(slides.FullName, "empty"));
+            var properties = System.Text.Json.JsonSerializer.Serialize(new
+            {
+                slideshow = new { value = slides.FullName },
+                missing = new { value = "directories/missing" },
+                outside = new { value = root.FullName },
+                amount = new { value = 42 }
+            });
+            using var server = WallpaperHttpServer.Start(wallpaper.FullName, "index.html", bootstrapPropertiesJson: properties);
+            using var client = new HttpClient();
+            using var config = System.Text.Json.JsonDocument.Parse(await client.GetStringAsync(
+                new Uri(server.EntryUri, "/__livepaper/config.json"), TestContext.Current.CancellationToken));
+
+            var directories = config.RootElement.GetProperty("directoryFiles");
+            Assert.Equal(image, Assert.Single(directories.GetProperty("slideshow").EnumerateArray()).GetString());
+            Assert.Single(directories.EnumerateObject());
+            Assert.Equal("image", await client.GetStringAsync(
+                new Uri(server.EntryUri, "/directories/slides/slide%201.jpg"), TestContext.Current.CancellationToken));
+        }
+        finally
+        {
+            root.Delete(recursive: true);
+        }
+    }
+
+    [Fact]
     public void RejectsWallpaperEngineFilePropertyOutsideWallpaper()
     {
         var root = Path.Combine(Path.GetTempPath(), $"livepaper-renderer-test-{Guid.NewGuid():N}");

@@ -314,7 +314,9 @@ function installConsoleDiagnostics(): void {
   const send = (level: string, values: unknown[]): void => {
     const message = values.map(value => {
       if (typeof value === "string") return value;
-      try { return JSON.stringify(value); } catch { return String(value); }
+      try { return JSON.stringify(value); } catch { }
+      // Module namespaces can be circular and also reject string conversion.
+      try { return String(value); } catch { return "[Unserializable value]"; }
     }).join(" ");
     void fetch(`/__livepaper/console?level=${encodeURIComponent(level)}&message=${encodeURIComponent(message)}`)
       .catch(() => undefined);

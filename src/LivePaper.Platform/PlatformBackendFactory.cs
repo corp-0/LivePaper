@@ -4,6 +4,16 @@ namespace LivePaper.Platform;
 
 public static class PlatformBackendFactory
 {
+    public static Task<bool> CheckPresentationAsync()
+    {
+        if (SelectBackend(Environment.GetEnvironmentVariable("XDG_CURRENT_DESKTOP")) == PlatformBackendKind.KWin)
+        {
+            return PlasmaPluginStatus.CheckAsync();
+        }
+        Console.WriteLine("Presentation version checks are not available for this desktop.");
+        return Task.FromResult(false);
+    }
+
     public static Task<IPlatformBackend> CreateAsync(PlatformBackendOptions options)
     {
         ArgumentNullException.ThrowIfNull(options);

@@ -170,7 +170,8 @@ public static class RendererApplication
             ipc.InitialPointerPosition,
             wallpaper.Manifest.WallpaperEngine?.Force2DTransforms is true,
             remoteEvents: true,
-            onConsoleMessage: javaScriptLog is null ? null : javaScriptLog.Write);
+            onConsoleMessage: javaScriptLog is null ? null : javaScriptLog.Write,
+            pointerInput: wallpaper.Manifest.HasCapability(WallpaperCapabilities.PointerInput));
 
         ipc.SendAsync(RendererMessage.ForPresentation(wallpaperServer.EntryUri))
             .GetAwaiter()

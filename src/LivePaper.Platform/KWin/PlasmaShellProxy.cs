@@ -9,6 +9,25 @@ public class PlasmaShellProxy(DBusConnection connection)
     private const string Path = "/PlasmaShell";
     private const string Interface = "org.kde.PlasmaShell";
 
+    public async Task<string[]> ReadLoadedVersionsAsync(string check)
+    {
+        var json = await EvaluateScriptAsync($$"""
+            const versions = [];
+            for (const desktop of desktops()) {
+                if (desktop.wallpaperPlugin !== {{SerializeString(PlasmaWallpaperPackage.PluginId)}}) {
+                    continue;
+                }
+                desktop.currentConfigGroup = ["Wallpaper", {{SerializeString(PlasmaWallpaperPackage.PluginId)}}, "General"];
+                desktop.writeConfig("VersionCheck", {{SerializeString(check)}});
+                versions.push(desktop.readConfig("ReportedCheck", "") === {{SerializeString(check)}}
+                    ? desktop.readConfig("LoadedVersion", "") : "");
+            }
+            print(JSON.stringify(versions));
+            """);
+        using var document = JsonDocument.Parse(json);
+        return document.RootElement.EnumerateArray().Select(static value => value.GetString() ?? string.Empty).ToArray();
+    }
+
     public Task ShowWallpaperAsync(string pluginId, string source)
     {
         var plugin = SerializeString(pluginId);

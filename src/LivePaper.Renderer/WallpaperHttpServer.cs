@@ -29,7 +29,8 @@ public sealed class WallpaperHttpServer : IDisposable
         PointerPositionChanged? bootstrapPointerPosition,
         bool force2DTransforms,
         bool remoteEvents,
-        Action<string, string>? onConsoleMessage)
+        Action<string, string>? onConsoleMessage,
+        bool pointerInput)
     {
         _root = root;
         _entryPath = Path.GetFullPath(entry, root);
@@ -45,7 +46,8 @@ public sealed class WallpaperHttpServer : IDisposable
             bootstrapPointerPosition,
             force2DTransforms,
             remoteEvents,
-            logRequests);
+            logRequests,
+            pointerInput);
         _listener = new TcpListener(IPAddress.Loopback, 0);
         _listener.Start();
         var port = ((IPEndPoint)_listener.LocalEndpoint).Port;
@@ -64,7 +66,8 @@ public sealed class WallpaperHttpServer : IDisposable
         PointerPositionChanged? bootstrapPointerPosition = null,
         bool force2DTransforms = false,
         bool remoteEvents = false,
-        Action<string, string>? onConsoleMessage = null) =>
+        Action<string, string>? onConsoleMessage = null,
+        bool pointerInput = false) =>
         new(
             root,
             entry,
@@ -74,7 +77,8 @@ public sealed class WallpaperHttpServer : IDisposable
             bootstrapPointerPosition,
             force2DTransforms,
             remoteEvents,
-            onConsoleMessage);
+            onConsoleMessage,
+            pointerInput);
 
     public void DispatchVisibility(VisibilityChanged visibility)
     {
@@ -353,7 +357,8 @@ public sealed class WallpaperHttpServer : IDisposable
         PointerPositionChanged? pointerPosition,
         bool force2DTransforms,
         bool remoteEvents,
-        bool diagnostics)
+        bool diagnostics,
+        bool pointerInput)
     {
         using var stream = new MemoryStream();
         using var writer = new Utf8JsonWriter(stream);
@@ -382,6 +387,7 @@ public sealed class WallpaperHttpServer : IDisposable
         writer.WriteBoolean("force2DTransforms", force2DTransforms);
         writer.WriteBoolean("remoteEvents", remoteEvents);
         writer.WriteBoolean("diagnostics", diagnostics);
+        writer.WriteBoolean("pointerInput", pointerInput);
         writer.WriteEndObject();
         writer.Flush();
         return stream.ToArray();

@@ -47,5 +47,11 @@ public class PlatformBackendFactoryTests
         Assert.Contains(
             "LivePaper.Platform.KWin.PlasmaWallpaper.contents.ui.main.qml",
             resources);
+        Assert.Contains(
+            "LivePaper.Platform.KWin.PlasmaWallpaper.contents.ui.input.qmldir",
+            resources);
+        Assert.Contains(
+            "LivePaper.Platform.KWin.PlasmaWallpaper.contents.ui.input.liblivepaperinput.so",
+            resources);
     }
 }

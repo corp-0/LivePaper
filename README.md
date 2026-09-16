@@ -44,8 +44,9 @@ If you want to try it, you can install the prerequisites and build it yourself.
 ## Pre-requisites
 
 LivePaper currently supports KDE Plasma 6 on Wayland. Building requires the
-.NET SDK, a C compiler, Node.js/npm, Wayland development tools, and the native
-libraries used by the selected renderer. The KWin backend requires Qt 6 WebEngine.
+.NET SDK, C and C++ compilers, pkg-config, Node.js/npm, Wayland development tools, and the native
+libraries used by the selected renderer. The KWin backend requires Qt 6 WebEngine
+and the Qt 6 Quick/QML development tools.
 The optional direct Wayland presenter requires WPE WebKit, WPE FDO, EGL, GLES,
 and a compositor that implements `wlr-layer-shell`.
 
@@ -104,6 +105,23 @@ Both settings accept `never`, `fully_covered`, `partially_covered`, or `always`.
 Set `force_direct_wpe = true` to bypass compositor-hosted presentation. On
 Plasma, the direct layer-shell surface sits above desktop icons and widgets.
 
+The Plasma plugin forwards desktop mouse input to wallpapers with the
+`pointer_input` capability. Icons, selection and desktop actions still receive
+the same input; the wallpaper stays behind them. Mouse input in other application
+windows is not forwarded.
+
+After installing an update, the installer checks the package and native input
+versions actually loaded by Plasma. Restarting LivePaper alone does not reload
+Plasma's cached plugin. If the check reports an outdated version or no fresh
+report, restart Plasma Shell or log out and back in, then check again:
+
+```sh
+livepaper check-presentation
+```
+
+The check returns a nonzero exit code when it cannot confirm the current version
+on every desktop using LivePaper. It never restarts Plasma automatically.
+
 ## Build manually
 
 You can build, test, and run the daemon with:
@@ -112,6 +130,12 @@ You can build, test, and run the daemon with:
 dotnet build
 dotnet test
 dotnet run --project src/LivePaper.Daemon -- --config config/livepaper.toml
+```
+
+Run the native input bridge's offscreen Qt WebEngine integration tests with:
+
+```sh
+bash tests/LivePaper.Plasma.Tests/run.sh
 ```
 
 The final binaries use Native AOT, so you won't need the .NET runtime after

@@ -1,4 +1,7 @@
 <Project Sdk="Microsoft.NET.Sdk">
+  <PropertyGroup>
+    <PlasmaInputBuildDirectory>$(MSBuildProjectDirectory)/obj/$(Configuration)/$(TargetFramework)/plasma-input</PlasmaInputBuildDirectory>
+  </PropertyGroup>
   <ItemGroup>
     <ProjectReference Include="../LivePaper.Protocol/LivePaper.Protocol.csproj" />
   </ItemGroup>
@@ -8,5 +11,16 @@
   <ItemGroup>
     <EmbeddedResource Include="KWin/*.js" />
     <EmbeddedResource Include="KWin/PlasmaWallpaper/**/*" />
+    <EmbeddedResource Include="$(PlasmaInputBuildDirectory)/liblivepaperinput.so"
+                      LogicalName="LivePaper.Platform.KWin.PlasmaWallpaper.contents.ui.input.liblivepaperinput.so" />
   </ItemGroup>
+  <ItemGroup>
+    <EmbeddedResource Include="$(PlasmaInputBuildDirectory)/input-version.txt"
+                      LogicalName="LivePaper.Platform.KWin.PlasmaWallpaper.input-version.txt" />
+  </ItemGroup>
+  <Target Name="BuildPlasmaInput" BeforeTargets="PrepareResources"
+          Inputs="KWin/Native/MouseInput.h;KWin/Native/MouseInput.cpp;KWin/Native/Plugin.cpp;KWin/Native/build.sh"
+          Outputs="$(PlasmaInputBuildDirectory)/liblivepaperinput.so;$(PlasmaInputBuildDirectory)/input-version.txt">
+    <Exec Command="bash KWin/Native/build.sh &quot;$(PlasmaInputBuildDirectory)&quot;" />
+  </Target>
 </Project>

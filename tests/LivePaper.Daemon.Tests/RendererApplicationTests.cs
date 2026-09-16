@@ -6,6 +6,29 @@ namespace LivePaper.Daemon.Tests;
 
 public class RendererApplicationTests
 {
+    [Theory]
+    [InlineData(false)]
+    [InlineData(true)]
+    public async Task HostedConfigReportsPointerInput(bool pointerInput)
+    {
+        var directory = Directory.CreateTempSubdirectory("livepaper-input-config-");
+        try
+        {
+            using var server = WallpaperHttpServer.Start(directory.FullName, "index.html", pointerInput: pointerInput);
+            using var client = new HttpClient();
+            var json = await client.GetStringAsync(
+                new Uri(server.EntryUri, "/__livepaper/config.json"),
+                TestContext.Current.CancellationToken);
+            using var config = System.Text.Json.JsonDocument.Parse(json);
+
+            Assert.Equal(pointerInput, config.RootElement.GetProperty("pointerInput").GetBoolean());
+        }
+        finally
+        {
+            directory.Delete(recursive: true);
+        }
+    }
+
     [Fact]
     public void HostedFallbackEscapesRendererError()
     {
@@ -29,7 +52,7 @@ public class RendererApplicationTests
         Directory.CreateDirectory(root);
         try
         {
-            File.WriteAllText(Path.Combine(root, "index.html"), "<!doctype html>");
+            await File.WriteAllTextAsync(Path.Combine(root, "index.html"), "<!doctype html>", TestContext.Current.CancellationToken);
             using var server = WallpaperHttpServer.Start(root, "index.html", remoteEvents: true);
             server.DispatchVisibility(new VisibilityChanged(
                 VisibilityState.FullyCovered,

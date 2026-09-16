@@ -5,6 +5,17 @@ using Tomlyn;
 
 try
 {
+    if (args.Contains("--check-presentation", StringComparer.Ordinal))
+    {
+        var configPath = DaemonOptions.GetConfigPath(args);
+        if (File.Exists(configPath) && LivePaperConfig.Load(File.ReadAllText(configPath)).ForceDirectWpe)
+        {
+            Console.WriteLine("Direct rendering is selected; no hosted plugin needs checking.");
+            return 0;
+        }
+        return await PlatformBackendFactory.CheckPresentationAsync() ? 0 : 1;
+    }
+
     if (args.Contains("--doctor", StringComparer.Ordinal))
     {
         return WallpaperLibrary.Doctor(

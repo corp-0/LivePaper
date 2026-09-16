@@ -8,5 +8,8 @@
     <entry name="Source" type="Url">
       <default></default>
     </entry>
+    <entry name="VersionCheck" type="String"><default></default></entry>
+    <entry name="ReportedCheck" type="String"><default></default></entry>
+    <entry name="LoadedVersion" type="String"><default></default></entry>
   </group>
 </kcfg>

@@ -28,6 +28,9 @@ case "$command_name" in
         fi
         exec "$libexec/LivePaper.Daemon" --dependency-fix "$@"
         ;;
+    check-presentation)
+        exec "$libexec/LivePaper.Daemon" --check-presentation --config "$config"
+        ;;
     start|stop|restart|status)
         exec systemctl --user "$command_name" livepaper.service
         ;;
@@ -35,7 +38,7 @@ case "$command_name" in
         exec journalctl --user -u livepaper.service -f
         ;;
     *)
-        echo "usage: livepaper {run|import|doctor|dep-fix|start|stop|restart|status|logs}" >&2
+        echo "usage: livepaper {run|import|doctor|dep-fix|check-presentation|start|stop|restart|status|logs}" >&2
         exit 2
         ;;
 esac

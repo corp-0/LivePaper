@@ -56,3 +56,6 @@ systemctl --user restart livepaper.service
 echo "Installed LivePaper release: $release_dir"
 echo "Launcher: $bin_path/livepaper"
 echo "Service: systemctl --user status livepaper.service"
+if ! "$release_dir/LivePaper.Daemon" --check-presentation --config "$config_dir/livepaper.toml"; then
+    echo "Installation completed, but the active presentation was not verified. See the message above." >&2
+fi

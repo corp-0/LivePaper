@@ -45,6 +45,17 @@ try
         return 0;
     }
 
+    var steamImportId = ReadOption(args, "--steam-import");
+    if (steamImportId is not null)
+    {
+        var imported = WallpaperImporter.ImportSteam(
+            steamImportId,
+            ReadOption(args, "--import-destination"),
+            ReadOption(args, "--steam-directory"));
+        Console.WriteLine($"Imported wallpaper: {imported}");
+        return 0;
+    }
+
     var importIndex = Array.IndexOf(args, "--import-wallpaper");
     if (importIndex >= 0)
     {

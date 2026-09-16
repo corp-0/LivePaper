@@ -18,6 +18,13 @@ case "$command_name" in
         fi
         exec "$libexec/LivePaper.Daemon" --import-wallpaper "$@"
         ;;
+    steam-import)
+        if [[ $# -lt 1 ]]; then
+            echo "usage: livepaper steam-import WORKSHOP_ID [--steam-directory DIRECTORY]" >&2
+            exit 2
+        fi
+        exec "$libexec/LivePaper.Daemon" --steam-import "$@"
+        ;;
     doctor)
         exec "$libexec/LivePaper.Daemon" --doctor --config "$config" "$@"
         ;;
@@ -38,7 +45,7 @@ case "$command_name" in
         exec journalctl --user -u livepaper.service -f
         ;;
     *)
-        echo "usage: livepaper {run|import|doctor|dep-fix|check-presentation|start|stop|restart|status|logs}" >&2
+        echo "usage: livepaper {run|import|steam-import|doctor|dep-fix|check-presentation|start|stop|restart|status|logs}" >&2
         exit 2
         ;;
 esac

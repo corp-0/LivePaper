@@ -6,6 +6,66 @@ namespace LivePaper.Daemon;
 
 public static class WallpaperImporter
 {
+    public static string ImportSteam(
+        string workshopId,
+        string? destinationRootArgument,
+        string? steamDirectory = null)
+    {
+        ValidateWorkshopId(workshopId);
+        var home = Environment.GetFolderPath(Environment.SpecialFolder.UserProfile);
+        string[] steamDirectories = steamDirectory is not null
+            ? [Path.GetFullPath(steamDirectory)]
+            : [
+                Path.Combine(home, ".local", "share", "Steam"),
+                Path.Combine(home, ".steam", "steam"),
+                Path.Combine(home, ".steam", "root"),
+                Path.Combine(home, ".var", "app", "com.valvesoftware.Steam", ".local", "share", "Steam")
+            ];
+        var workshopDirectory = steamDirectories
+            .Select(directory => Path.Combine(directory, "steamapps", "workshop", "content", "431960"))
+            .FirstOrDefault(directory => Directory.Exists(Path.Combine(directory, workshopId)));
+        if (workshopDirectory is null)
+        {
+            throw new DirectoryNotFoundException(
+                $"Workshop item '{workshopId}' was not found locally. Download it in Steam, " +
+                "or use --steam-directory to select the Steam library containing its steamapps directory.");
+        }
+
+        var source = Path.Combine(workshopDirectory, workshopId);
+        var projectPath = Path.Combine(source, "project.json");
+        if (!File.Exists(projectPath))
+        {
+            throw new FileNotFoundException("The import source has no project.json.", projectPath);
+        }
+
+        using var project = JsonDocument.Parse(File.ReadAllText(projectPath));
+        var dependencies = new List<string>();
+        if (project.RootElement.TryGetProperty("dependency", out var dependency))
+        {
+            var dependencyId = dependency.ValueKind == JsonValueKind.String ? dependency.GetString() : null;
+            ValidateWorkshopId(dependencyId);
+            var dependencyPath = Path.Combine(workshopDirectory, dependencyId!);
+            if (!Directory.Exists(dependencyPath))
+            {
+                throw new DirectoryNotFoundException(
+                    $"Workshop item '{workshopId}' requires dependency '{dependencyId}', " +
+                    $"which was not found at '{dependencyPath}'. Download the dependency in Steam and retry.");
+            }
+
+            dependencies.Add(dependencyPath);
+        }
+
+        return Import(source, destinationRootArgument, dependencies);
+    }
+
+    private static void ValidateWorkshopId(string? workshopId)
+    {
+        if (string.IsNullOrEmpty(workshopId) || workshopId.Any(static character => !char.IsAsciiDigit(character)))
+        {
+            throw new InvalidDataException($"Workshop ID '{workshopId}' must contain only digits.");
+        }
+    }
+
     public static string Import(
         string sourceArgument,
         string? destinationRootArgument,
@@ -99,7 +159,7 @@ public static class WallpaperImporter
             if (baseDependency is not null)
             {
                 CopyDirectory(baseDependency.Path, staging);
-                CopyDirectory(source, staging, overwrite: true);
+                CopyDirectory(source, staging, overwrite: true, includeProject: false);
                 foreach (var dependency in dependencies.Where(dependency => dependency != baseDependency))
                 {
                     CopyDirectory(dependency.Path, Path.Combine(staging, dependency.Id));
@@ -187,7 +247,7 @@ public static class WallpaperImporter
     internal static void CopyDirectoryForDependency(string source, string destination) =>
         CopyDirectory(source, destination);
 
-    private static void CopyDirectory(string source, string destination, bool overwrite = false)
+    private static void CopyDirectory(string source, string destination, bool overwrite = false, bool includeProject = true)
     {
         Directory.CreateDirectory(destination);
         foreach (var directory in Directory.EnumerateDirectories(source, "*", SearchOption.AllDirectories))
@@ -199,7 +259,8 @@ public static class WallpaperImporter
         foreach (var file in Directory.EnumerateFiles(source, "*", SearchOption.AllDirectories))
         {
             var relative = Path.GetRelativePath(source, file);
-            if (string.Equals(relative, "project.json", StringComparison.OrdinalIgnoreCase))
+            
+            if (!includeProject && string.Equals(relative, "project.json", StringComparison.OrdinalIgnoreCase))
             {
                 continue;
             }

@@ -5,6 +5,105 @@ namespace LivePaper.Daemon.Tests;
 
 public class WallpaperImporterTests
 {
+    [Theory]
+    [InlineData(false)]
+    [InlineData(true)]
+    public void ImportsSteamItemWithAutomaticDependency(bool hasDependency)
+    {
+        var root = Directory.CreateTempSubdirectory("livepaper-steam-import-");
+        try
+        {
+            var steam = Path.Combine(root.FullName, "Steam library");
+            var workshop = Path.Combine(steam, "steamapps", "workshop", "content", "431960");
+            var source = Directory.CreateDirectory(Path.Combine(workshop, "12345")).FullName;
+            var runnable = hasDependency
+                ? Directory.CreateDirectory(Path.Combine(workshop, "67890")).FullName
+                : source;
+            File.WriteAllText(Path.Combine(runnable, "project.json"), """
+                { "type": "web", "title": "Steam wallpaper", "file": "index.html",
+                  "general": { "properties": { "amount": { "value": 10 } } } }
+                """);
+            File.WriteAllText(Path.Combine(runnable, "index.html"), "<!doctype html>");
+            if (hasDependency)
+            {
+                File.WriteAllText(Path.Combine(source, "project.json"), """
+                    { "title": "Steam preset", "dependency": "67890", "preset": { "amount": 42 } }
+                    """);
+                File.WriteAllText(Path.Combine(source, "preset.txt"), "preset asset");
+            }
+
+            var destination = Path.Combine(root.FullName, "destination");
+            var imported = WallpaperImporter.ImportSteam("12345", destination, steam);
+            var manifest = WallpaperManifest.Load(File.ReadAllText(Path.Combine(imported, "manifest.toml")));
+            var compatibility = Assert.IsType<WallpaperEngineCompatibility>(manifest.WallpaperEngine);
+
+            Assert.Equal("12345", compatibility.WorkshopId);
+            Assert.Equal(hasDependency ? "67890" : null, compatibility.BaseDependency);
+            Assert.Equal(hasDependency ? ["67890"] : Array.Empty<string>(), compatibility.Dependencies);
+            Assert.Equal(hasDependency ? 42L : 10L, compatibility.Properties["amount"]);
+            Assert.Equal("<!doctype html>", File.ReadAllText(Path.Combine(imported, "index.html")));
+            Assert.Equal(File.ReadAllText(Path.Combine(runnable, "project.json")),
+                File.ReadAllText(Path.Combine(imported, "project.json")));
+            if (hasDependency)
+            {
+                Assert.Equal("preset asset", File.ReadAllText(Path.Combine(imported, "preset.txt")));
+            }
+            Assert.True(File.Exists(Path.Combine(source, "project.json")));
+            Assert.Throws<IOException>(() => WallpaperImporter.ImportSteam("12345", destination, steam));
+        }
+        finally
+        {
+            root.Delete(recursive: true);
+        }
+    }
+
+    [Theory]
+    [InlineData("../12345")]
+    [InlineData("abc")]
+    [InlineData("")]
+    public void RejectsInvalidSteamWorkshopId(string id)
+    {
+        Assert.Throws<InvalidDataException>(() => WallpaperImporter.ImportSteam(id, null));
+    }
+
+    [Theory]
+    [InlineData(null)]
+    [InlineData("67890")]
+    [InlineData("../67890")]
+    public void ReportsUnavailableSteamItemOrInvalidDependency(string? dependencyId)
+    {
+        var root = Directory.CreateTempSubdirectory("livepaper-steam-import-");
+        try
+        {
+            var destination = Path.Combine(root.FullName, "destination");
+            if (dependencyId is not null)
+            {
+                var source = Directory.CreateDirectory(Path.Combine(
+                    root.FullName, "steamapps", "workshop", "content", "431960", "12345"));
+                File.WriteAllText(Path.Combine(source.FullName, "project.json"),
+                    System.Text.Json.JsonSerializer.Serialize(new { dependency = dependencyId }));
+            }
+
+            if (dependencyId == "../67890")
+            {
+                Assert.Throws<InvalidDataException>(() => WallpaperImporter.ImportSteam("12345", destination, root.FullName));
+            }
+            else
+            {
+                var error = Assert.Throws<DirectoryNotFoundException>(() =>
+                    WallpaperImporter.ImportSteam("12345", destination, root.FullName));
+                Assert.Contains(dependencyId ?? "12345", error.Message, StringComparison.Ordinal);
+                Assert.Contains("Steam", error.Message, StringComparison.Ordinal);
+            }
+
+            Assert.False(Directory.Exists(destination));
+        }
+        finally
+        {
+            root.Delete(recursive: true);
+        }
+    }
+
     [Fact]
     public void DetectsWallpaperEngineAudioListener()
     {

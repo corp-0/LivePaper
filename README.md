@@ -76,6 +76,7 @@ livepaper status
 livepaper logs
 livepaper restart
 livepaper import /path/to/workshop/project
+livepaper steam-import 2274466936
 livepaper doctor
 livepaper dep-fix wallpaper-engine.example --dependency /path/to/workshop/dependency
 ```
@@ -166,7 +167,9 @@ dotnet run --project src/LivePaper.Renderer -- --wallpaper /path/to/wallpaper
 Wallpaper Engine projects need to be imported first. The import copies the
 project into `$XDG_DATA_HOME/livepaper/wallpapers` (usually
 `~/.local/share/livepaper/wallpapers`) and generates a `manifest.toml` file. It
-doesn't copy `project.json` or change anything in your Steam Workshop folder.
+preserves `project.json` for wallpapers that read it at runtime and doesn't
+change anything in your Steam Workshop folder. Presets retain their base
+dependency's `project.json`; their settings are stored in `manifest.toml`.
 
 ```sh
 dotnet run --project src/LivePaper.Daemon -- \
@@ -175,6 +178,18 @@ dotnet run --project src/LivePaper.Daemon -- \
 
 You can use `--import-destination` to pick another wallpaper library. LivePaper
 won't overwrite a wallpaper you already imported.
+
+To import an item already downloaded by Steam using just its Workshop ID:
+
+```sh
+livepaper steam-import 2274466936
+```
+
+This finds the item in the standard native or Flatpak Steam directories, reads
+its `project.json`, and passes any declared `dependency` from the same Workshop
+directory to the existing importer. Both items must already be downloaded.
+For another Steam library, add `--steam-directory /path/to/SteamLibrary` (the
+directory containing `steamapps`). `--import-destination` works here too.
 
 If a web wallpaper loads files from another Workshop item, pass that item's
 directory with `--dependency`. LivePaper copies it into the import under its

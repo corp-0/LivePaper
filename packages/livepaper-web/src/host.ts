@@ -21,6 +21,7 @@ declare global {
   interface Window {
     wallpaperPropertyListener?: {
       applyUserProperties?(properties: Record<string, { readonly value: unknown }>): void;
+      userDirectoryFilesAddedOrChanged?(propertyName: string, files: string[]): void;
     };
     wallpaperRegisterAudioListener?(listener: (samples: AudioSpectrum) => void): void;
     wallpaperRequestRandomFileForProperty?(
@@ -104,7 +105,11 @@ HTMLMediaElement.prototype.play = function (...args): Promise<void> {
 
 document.addEventListener("DOMContentLoaded", () => {
   if (pointerPosition) livepaper._setPointerPosition(pointerPosition);
-  applyProperties(config.properties);
+}, { once: true });
+
+window.addEventListener("load", () => {
+  // Wallpaper load handlers must initialize their canvases before receiving settings.
+  window.setTimeout(() => applyProperties(config.properties), 0);
 }, { once: true });
 
 if (config.diagnostics) installDiagnostics(livepaper);
@@ -126,6 +131,10 @@ function applyProperties(properties: BootstrapConfig["properties"]): void {
   const apply = (): void => {
     const listener = window.wallpaperPropertyListener;
     if (typeof listener?.applyUserProperties === "function") {
+      // Populate slideshow lists before settings select the first image.
+      for (const [propertyName, files] of Object.entries(config.directoryFiles)) {
+        listener.userDirectoryFilesAddedOrChanged?.(propertyName, [...files]);
+      }
       listener.applyUserProperties(properties);
     } else {
       window.setTimeout(apply, 0);
@@ -158,6 +167,7 @@ function installRemoteEvents(): void {
 function installFileUrlCompatibility(wallpaperRoot: string): void {
   const root = wallpaperRoot.replace(/\\/g, "/").replace(/\/+$/, "");
   const translate = (value: string): string => {
+    if (typeof value !== "string") return value;
     if (!value.toLowerCase().startsWith("file:")) return value;
     let path: string;
     try {
@@ -170,7 +180,7 @@ function installFileUrlCompatibility(wallpaperRoot: string): void {
     const encoded = relative.split("/").map(encodeURIComponent).join("/");
     return new URL(`/${encoded}`, window.location.origin).href;
   };
-  const translateCss = (value: string): string => value.replace(
+  const translateCss = (value: string): string => typeof value !== "string" ? value : value.replace(
     /url\(\s*(["']?)(.*?)\1\s*\)/gi,
     (_match, quote: string, url: string) => `url(${quote}${translate(url)}${quote})`,
   );
